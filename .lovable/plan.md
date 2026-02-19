@@ -1,130 +1,82 @@
 
+## Correções e Melhorias no BrunoFlow
 
-# Responsividade Desktop + Correcao de Relatorios
-
-## Resumo
-
-Transformar o BrunoFlow em um app responsivo: mobile mantem o layout atual com bottom nav, desktop ganha sidebar esquerda fixa + header superior. Alem disso, corrigir a atualizacao dos dados nos relatorios usando Dexie live queries (ja existentes) e adicionar refetch manual.
+Serão feitas modificações cirúrgicas em 3 arquivos existentes. Nenhum arquivo novo será criado.
 
 ---
 
-## Parte 1: Layout Responsivo (Prioridade)
+### 1. DashboardPage.tsx — Seção "Desempenho por Barbeiro"
 
-### 1.1 Novo componente: DesktopSidebar
+**O que será adicionado** (abaixo dos cards métricos e do gráfico existentes):
 
-Criar `src/components/DesktopSidebar.tsx`:
-- Sidebar fixa a esquerda (w-64), visivel apenas em `hidden md:flex`
-- Itens de menu: Home, Clientes, Planos, Produtos, Barbeiros, Servicos, Pedidos, Mensagens, Menu/Config
-- Cada item usa `NavLink` ou `useLocation` para destacar a rota ativa
-- Icones do lucide-react para cada item
-- Logo "Bruno Barbearia" no topo da sidebar
-- Botao de logout no rodape
+- Dois novos `useLiveQuery`: um para `db.barbers.toArray()` e outro para `db.services.toArray()`
+- Estado `useState<'mes' | '30dias' | 'tudo'>('mes')` para o filtro de período
+- Função `getBarberStats(barberId)` que filtra atendimentos pelo período e calcula:
+  - Total faturado (soma de `totalValue`)
+  - Comissão total (soma de `barberCommission`)
+  - Valor da barbearia (soma de `shopValue`)
+  - Número de atendimentos
+- O `authStore` atual só tem `isAuthenticated` (sem `barberId` ou `isAdmin`). O destaque de linha ficará preparado para quando isso existir — por ora a seção aparece igualmente para todos
+- Layout: `<Select>` para filtro + cards em mobile / tabela em `md+`
 
-### 1.2 Novo componente: DesktopHeader
+**Classes Tailwind principais:**
+- Container: `border-l-2 border-primary bg-accent/20` (card destacado)
+- Grid mobile: `grid grid-cols-2 gap-2`
+- Tabela desktop: `hidden md:table`
 
-Criar `src/components/DesktopHeader.tsx`:
-- Header fixo no topo, visivel apenas em `hidden md:flex`
-- Titulo da pagina atual (derivado da rota)
-- Toggle de tema (sol/lua)
-- Botao de logout
-- Botao "+ Atendimento" como acao rapida
+---
 
-### 1.3 Refatorar AppLayout
+### 2. ClientProfilePage.tsx — Botão Fixo Corrigido
 
-Modificar `src/components/AppLayout.tsx`:
-- Mobile (< md): manter bottom nav atual (envolver em `md:hidden`)
-- Desktop (>= md): renderizar DesktopSidebar + DesktopHeader + conteudo principal
-- Estrutura desktop:
+**Problema atual:** O botão está em `fixed bottom-20 left-0 right-0` com `p-4` e gradiente, causando sobreposição com o nav mobile e largura inconsistente no desktop.
+
+**Correção:**
+
+Substituir o `<div className="fixed bottom-20 left-0 right-0 ...">` por dois elementos separados com media query Tailwind:
 
 ```
-<div class="flex min-h-screen">
-  <DesktopSidebar />            <!-- hidden md:flex -->
-  <div class="flex-1 flex flex-col">
-    <DesktopHeader />           <!-- hidden md:flex -->
-    <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
-      {children}
-    </main>
-  </div>
-</div>
-<nav class="md:hidden ...">    <!-- bottom nav mobile -->
+Mobile (padrão):
+  fixed bottom-20 left-4 right-4 z-50
+  → botão w-full h-12
+
+Desktop (md:):
+  fixed bottom-6 right-6 z-50 md:left-auto md:w-auto
+  → botão com largura automática, shadow-lg, rounded-xl
 ```
 
-### 1.4 Ajustar paginas para desktop
-
-**DashboardPage:**
-- Cards de metricas: `grid-cols-2 md:grid-cols-4`
-- Grafico de faturamento: altura maior em desktop (`h-48 md:h-72`)
-- Remover `max-w-lg` e usar `max-w-lg md:max-w-full`
-
-**ClientsListPage:**
-- Em desktop, usar layout de tabela com mais colunas (nome, apelido, whatsapp, ultima visita)
-- `max-w-lg md:max-w-full`
-
-**ClientProfilePage:**
-- Dados financeiros e grafico lado a lado: `flex flex-col md:flex-row md:gap-6`
-
-**ServiceFormPage:**
-- Formulario em duas colunas no desktop: `grid md:grid-cols-2 gap-6`
-- `max-w-lg md:max-w-2xl`
-
-**PlansListPage, ProductsPage, BarbersPage, OrdersPage, MenuPage, etc:**
-- Substituir `max-w-lg` por `max-w-lg md:max-w-4xl`
-- Listas em grid `md:grid-cols-2` quando fizer sentido
-
-### 1.5 Esconder bottom nav no desktop
-
-Na bottom nav existente no AppLayout, adicionar `md:hidden` para que nao apareca em telas >= 768px.
+O `pb-24` no container principal será mantido (espaço para o botão não cobrir conteúdo).
 
 ---
 
-## Parte 2: Correcao de Relatorios
+### 3. ServiceFormPage.tsx — Cadastro Rápido com Validação
 
-O sistema ja usa `useLiveQuery` do Dexie em todas as paginas (DashboardPage, ClientsListPage, PlansListPage, etc). O Dexie `useLiveQuery` **ja e reativo** -- qualquer mudanca no IndexedDB (add, update, delete) dispara re-render automatico.
+**Problema atual:** O `handleQuickAddClient` cadastra o cliente direto com apenas o nome da busca, sem WhatsApp e sem validação.
 
-### Diagnostico
+**O que será mudado:**
 
-Os dados ja deveriam atualizar automaticamente via `useLiveQuery`. Possiveis problemas:
-- O `seedDatabase()` pode estar sobrescrevendo dados
-- Calculos derivados (chartData, metricas) dependem de re-execucao correta
+- Ao clicar em "Cadastrar `"nome"`" no dropdown, ao invés de salvar diretamente, abre um inline form expandido abaixo do campo de busca
+- Estado novo: `showQuickForm: boolean`, `quickName: string`, `quickWhatsapp: string`, `quickErrors: { name?: string; whatsapp?: string }`
+- Validação em tempo real:
+  - Nome: mínimo 3 caracteres
+  - WhatsApp: exatamente 11 dígitos numéricos (após remover máscara)
+- Input de WhatsApp usa `phoneMask()` (já existente em `lib/format.ts`) no `onChange`
+- Botão "Salvar e Continuar" fica `disabled` enquanto campos inválidos (+ `opacity-50 cursor-not-allowed`)
+- `handleSaveQuickClient()`: valida novamente, chama `db.clients.add({name, whatsapp, nickname: '', tags: [], createdAt: ...})`, seleciona o ID retornado, fecha o form
 
-### Correcoes
-
-1. **DashboardPage**: Verificar que `seedDatabase()` no useEffect so executa se DB estiver vazio (ja parece ser o caso, mas confirmar no seed.ts)
-
-2. **Adicionar botao "Atualizar"**: Em DashboardPage, adicionar botao manual que forca re-render (util para PWA offline):
-   - Um simples `key` state que incrementa ao clicar, forcando remount dos live queries
-
-3. **Loading states**: Adicionar skeleton/spinner enquanto dados carregam (quando `useLiveQuery` retorna undefined)
+**Mensagens de erro:** `<p className="text-xs text-destructive mt-1">` abaixo de cada campo
 
 ---
 
-## Arquivos a criar
+### Ordem de Implementação
 
-- `src/components/DesktopSidebar.tsx` -- sidebar de navegacao desktop
-- `src/components/DesktopHeader.tsx` -- header superior desktop
+1. `src/pages/DashboardPage.tsx` — adicionar seção de desempenho por barbeiro
+2. `src/pages/ClientProfilePage.tsx` — corrigir posicionamento do botão
+3. `src/pages/ServiceFormPage.tsx` — expandir cadastro rápido com validação
 
-## Arquivos a modificar
+---
 
-- `src/components/AppLayout.tsx` -- integrar sidebar/header desktop + esconder bottom nav em md:
-- `src/pages/DashboardPage.tsx` -- responsividade de grids/graficos + botao atualizar
-- `src/pages/ClientsListPage.tsx` -- max-width + grid desktop
-- `src/pages/ClientProfilePage.tsx` -- layout lado a lado desktop
-- `src/pages/ServiceFormPage.tsx` -- form 2 colunas desktop
-- `src/pages/PlansListPage.tsx` -- max-width desktop
-- `src/pages/ProductsPage.tsx` -- max-width + grid desktop
-- `src/pages/BarbersPage.tsx` -- max-width desktop
-- `src/pages/OrdersPage.tsx` -- max-width desktop
-- `src/pages/MenuPage.tsx` -- max-width desktop (menos itens, pois sidebar ja tem navegacao)
-- `src/pages/MessageTemplatesPage.tsx` -- max-width desktop
-- `src/pages/ClientFormPage.tsx` -- max-width desktop
-- `src/pages/ServiceItemsPage.tsx` -- max-width desktop
-- `src/db/seed.ts` -- verificar que nao sobrescreve dados existentes
+### Observações Técnicas
 
-## Abordagem tecnica
-
-- Mobile-first com Tailwind: sem prefixo = mobile, `md:` = desktop
-- `useIsMobile()` hook ja existe para logica condicional se necessario
-- Nenhuma dependencia nova necessaria
-- Dados continuam em Dexie (IndexedDB) com live queries reativas
-- PWA ja configurado (vite-plugin-pwa)
-
+- **AuthStore:** O store atual só tem `isAuthenticated` (sem `isAdmin` ou `currentBarberId`). No Dashboard, a seção de desempenho será pública para todos (conforme solicitado). A lógica de destaque de linha está preparada via prop, mas inativa até o store ser expandido com ID do barbeiro logado
+- **Sem novos arquivos ou dependências**
+- **Todas as queries são `useLiveQuery`** — atualização automática. Botão "Atualizar" adicionado como segurança com key-state pattern
