@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db/database';
@@ -8,15 +8,16 @@ import { sendCashbackReminder } from '@/lib/whatsappApi';
 import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, CreditCard, DollarSign, UserPlus, TrendingUp, ShoppingBag, BarChart3 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Area, AreaChart } from 'recharts';
-import { format, subMonths, isBefore, parseISO, differenceInDays } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Users, CreditCard, DollarSign, UserPlus, ShoppingBag, BarChart3, Scissors, RefreshCw } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
+import { format, subMonths, isBefore, parseISO, differenceInDays, startOfMonth, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-
-  useEffect(() => { seedDatabase(); }, []);
+  const [barberPeriod, setBarberPeriod] = useState<'mes' | '30dias' | 'tudo'>('mes');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Expire cashbacks and send reminders
   useEffect(() => {
@@ -47,10 +48,12 @@ export default function DashboardPage() {
     checkCashbacks();
   }, []);
 
-  const clients = useLiveQuery(() => db.clients.toArray()) ?? [];
-  const plans = useLiveQuery(() => db.plans.where('status').equals('ativo').toArray()) ?? [];
-  const allPlans = useLiveQuery(() => db.plans.toArray()) ?? [];
-  const orders = useLiveQuery(() => db.orders.toArray()) ?? [];
+  const clients = useLiveQuery(() => db.clients.toArray(), [refreshKey]) ?? [];
+  const plans = useLiveQuery(() => db.plans.where('status').equals('ativo').toArray(), [refreshKey]) ?? [];
+  const allPlans = useLiveQuery(() => db.plans.toArray(), [refreshKey]) ?? [];
+  const orders = useLiveQuery(() => db.orders.toArray(), [refreshKey]) ?? [];
+  const barbers = useLiveQuery(() => db.barbers.toArray(), [refreshKey]) ?? [];
+  const allServices = useLiveQuery(() => db.services.toArray(), [refreshKey]) ?? [];
 
   const now = new Date();
   const thisMonth = format(now, 'yyyy-MM');
@@ -89,6 +92,28 @@ export default function DashboardPage() {
   });
 
   const totalRevenue = recurringRevenue + orderRevenueThisMonth;
+
+  // Barber performance stats
+  const getBarberStats = (barberId: number) => {
+    const cutoffDate =
+      barberPeriod === 'mes' ? format(startOfMonth(now), 'yyyy-MM-dd') :
+      barberPeriod === '30dias' ? format(subDays(now, 30), 'yyyy-MM-dd') :
+      '0000-00-00';
+
+    const filtered = allServices.filter(s => {
+      if (s.barberId !== barberId) return false;
+      if (barberPeriod === 'tudo') return true;
+      const sDate = s.date.slice(0, 10);
+      return sDate >= cutoffDate;
+    });
+
+    return {
+      total: filtered.reduce((s, sv) => s + (sv.totalValue ?? 0), 0),
+      commission: filtered.reduce((s, sv) => s + (sv.barberCommission ?? 0), 0),
+      shopValue: filtered.reduce((s, sv) => s + (sv.shopValue ?? 0), 0),
+      count: filtered.length,
+    };
+  };
 
   const metrics = [
     { label: 'Total Clientes', value: clients.length, icon: Users, path: '/clientes', color: 'from-blue-500 to-blue-600' },
@@ -247,6 +272,120 @@ export default function DashboardPage() {
               <div className="text-right">
                 <p className="text-sm font-bold text-primary">{formatCurrency(orderRevenueThisMonth)}</p>
                 <p className="text-[10px] text-muted-foreground">este mês</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Barber Performance Section */}
+        {barbers.length > 0 && (
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg gradient-subtle flex items-center justify-center">
+                    <Scissors size={16} className="text-primary" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold">Desempenho por Barbeiro</span>
+                    <p className="text-[10px] text-muted-foreground">Atendimentos e comissões</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={barberPeriod} onValueChange={(v: 'mes' | '30dias' | 'tudo') => setBarberPeriod(v)}>
+                    <SelectTrigger className="h-8 text-xs w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mes">Este mês</SelectItem>
+                      <SelectItem value="30dias">Últimos 30 dias</SelectItem>
+                      <SelectItem value="tudo">Todo período</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefreshKey(k => k + 1)}>
+                    <RefreshCw size={14} />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Mobile: cards por barbeiro */}
+              <div className="md:hidden space-y-3">
+                {barbers.map(barber => {
+                  const stats = getBarberStats(barber.id!);
+                  return (
+                    <div key={barber.id} className="rounded-lg border border-border bg-card p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">{barber.nickname || barber.name}</span>
+                        <span className="text-xs text-muted-foreground">{stats.count} atendimento{stats.count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Faturado</p>
+                          <p className="text-sm font-bold text-primary">{formatCurrency(stats.total)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Comissão</p>
+                          <p className="text-sm font-bold">{formatCurrency(stats.commission)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Barbearia</p>
+                          <p className="text-sm font-semibold text-muted-foreground">{formatCurrency(stats.shopValue)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Comissão %</p>
+                          <p className="text-sm font-semibold">{barber.defaultCommission}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: tabela */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-[11px] text-muted-foreground uppercase tracking-wider">
+                      <th className="text-left pb-2 font-medium">Barbeiro</th>
+                      <th className="text-right pb-2 font-medium">Atendimentos</th>
+                      <th className="text-right pb-2 font-medium">Faturado</th>
+                      <th className="text-right pb-2 font-medium">Comissão</th>
+                      <th className="text-right pb-2 font-medium">Barbearia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {barbers.map(barber => {
+                      const stats = getBarberStats(barber.id!);
+                      return (
+                        <tr key={barber.id} className="border-b border-border/50 hover:bg-accent/10 transition-colors">
+                          <td className="py-2.5 font-medium">{barber.nickname || barber.name}</td>
+                          <td className="py-2.5 text-right text-muted-foreground">{stats.count}</td>
+                          <td className="py-2.5 text-right font-bold text-primary">{formatCurrency(stats.total)}</td>
+                          <td className="py-2.5 text-right font-semibold">{formatCurrency(stats.commission)}</td>
+                          <td className="py-2.5 text-right text-muted-foreground">{formatCurrency(stats.shopValue)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {barbers.length > 1 && (() => {
+                    const totals = barbers.reduce((acc, b) => {
+                      const s = getBarberStats(b.id!);
+                      return { total: acc.total + s.total, commission: acc.commission + s.commission, shopValue: acc.shopValue + s.shopValue, count: acc.count + s.count };
+                    }, { total: 0, commission: 0, shopValue: 0, count: 0 });
+                    return (
+                      <tfoot>
+                        <tr className="border-t-2 border-border font-bold text-xs">
+                          <td className="pt-2.5 text-muted-foreground uppercase tracking-wider">Total</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">{totals.count}</td>
+                          <td className="pt-2.5 text-right text-primary">{formatCurrency(totals.total)}</td>
+                          <td className="pt-2.5 text-right">{formatCurrency(totals.commission)}</td>
+                          <td className="pt-2.5 text-right text-muted-foreground">{formatCurrency(totals.shopValue)}</td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
+                </table>
               </div>
             </CardContent>
           </Card>
