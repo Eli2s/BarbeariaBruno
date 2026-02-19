@@ -170,10 +170,10 @@ export default function ClientProfilePage() {
           </Accordion>
         </div>
 
-        {/* Fixed Bottom Button */}
-        <div className="fixed bottom-20 left-0 right-0 p-4 bg-gradient-to-t from-background to-transparent">
+        {/* Fixed Bottom Button — mobile: full-width above nav | desktop: bottom-right */}
+        <div className="fixed bottom-20 left-4 right-4 z-50 md:bottom-6 md:left-auto md:right-6 md:w-auto">
           <Button
-            className="w-full max-w-lg mx-auto block h-12 font-semibold"
+            className="w-full md:w-auto h-12 font-semibold shadow-lg rounded-xl px-6"
             onClick={() => activePlan ? navigate(`/planos/editar/${activePlan.id}`) : navigate(`/planos/novo?clientId=${clientId}`)}
           >
             {activePlan ? 'Editar Plano' : 'Criar Plano para este Cliente'}

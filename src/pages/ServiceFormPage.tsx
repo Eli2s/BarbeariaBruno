@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, X, Plus, Minus, UserPlus, Gift, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, X, Plus, Minus, UserPlus, Gift, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { sendCashbackMessage } from '@/lib/whatsappApi';
+import { phoneMask } from '@/lib/format';
 import type { Cashback } from '@/types';
 
 const PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito'];
@@ -39,6 +40,12 @@ export default function ServiceFormPage() {
   const [usePlanCredit, setUsePlanCredit] = useState(false);
   const [activePlan, setActivePlan] = useState<any>(null);
   const [barberId, setBarberId] = useState<string>('');
+
+  // Quick add client state
+  const [showQuickForm, setShowQuickForm] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickWhatsapp, setQuickWhatsapp] = useState('');
+  const [quickErrors, setQuickErrors] = useState<{ name?: string; whatsapp?: string }>({});
 
   // Cashback
   const [activateCashback, setActivateCashback] = useState(false);
@@ -110,14 +117,39 @@ export default function ServiceFormPage() {
     return c.name.toLowerCase().includes(q) || c.nickname.toLowerCase().includes(q);
   });
 
-  const handleQuickAddClient = async () => {
-    const trimmed = clientSearch.trim();
-    if (!trimmed) return;
-    const id = await db.clients.add({ name: trimmed, nickname: '', whatsapp: '', tags: [], createdAt: new Date().toISOString() });
+  const validateQuickForm = () => {
+    const errors: { name?: string; whatsapp?: string } = {};
+    if (quickName.trim().length < 3) errors.name = 'Nome deve ter pelo menos 3 caracteres';
+    const digits = quickWhatsapp.replace(/\D/g, '');
+    if (digits.length !== 11) errors.whatsapp = 'WhatsApp deve ter 11 dígitos (com DDD)';
+    setQuickErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const isQuickFormValid = quickName.trim().length >= 3 && quickWhatsapp.replace(/\D/g, '').length === 11;
+
+  const handleOpenQuickForm = () => {
+    setQuickName(clientSearch.trim());
+    setQuickWhatsapp('');
+    setQuickErrors({});
+    setShowQuickForm(true);
+    setShowClientList(false);
+  };
+
+  const handleSaveQuickClient = async () => {
+    if (!validateQuickForm()) return;
+    const id = await db.clients.add({
+      name: quickName.trim(),
+      nickname: '',
+      whatsapp: quickWhatsapp.replace(/\D/g, ''),
+      tags: [],
+      createdAt: new Date().toISOString(),
+    });
     setClientId(id as number);
     setClientSearch('');
+    setShowQuickForm(false);
     setShowClientList(false);
-    toast.success(`Cliente "${trimmed}" cadastrado!`);
+    toast.success(`Cliente "${quickName.trim()}" cadastrado!`);
   };
 
   // Calculate commission for a barber
@@ -239,25 +271,85 @@ export default function ServiceFormPage() {
                 <Badge className="gap-1">{selectedClient.nickname || selectedClient.name} <X size={10} className="cursor-pointer" onClick={() => setClientId(null)} /></Badge>
               </div>
             ) : (
-              <div className="relative">
-                <Input value={clientSearch} onChange={e => { setClientSearch(e.target.value); setShowClientList(true); }} placeholder="Buscar cliente..." onFocus={() => setShowClientList(true)} />
-                {showClientList && clientSearch && (
-                  <div className="absolute z-10 w-full mt-1 bg-card border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {filteredClients.map(c => (
-                      <button key={c.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-secondary" onClick={() => { setClientId(c.id!); setClientSearch(''); setShowClientList(false); }}>
-                        {c.name} {c.nickname ? `(${c.nickname})` : ''}
-                      </button>
-                    ))}
-                    {filteredClients.length === 0 && (
-                      <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-secondary flex items-center gap-2 text-primary" onClick={handleQuickAddClient}>
-                        <UserPlus size={14} /> Cadastrar "{clientSearch.trim()}"
-                      </button>
-                    )}
+              <div>
+                <div className="relative">
+                  <Input value={clientSearch} onChange={e => { setClientSearch(e.target.value); setShowClientList(true); setShowQuickForm(false); }} placeholder="Buscar cliente..." onFocus={() => setShowClientList(true)} />
+                  {showClientList && clientSearch && !showQuickForm && (
+                    <div className="absolute z-10 w-full mt-1 bg-card border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {filteredClients.map(c => (
+                        <button key={c.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-secondary" onClick={() => { setClientId(c.id!); setClientSearch(''); setShowClientList(false); }}>
+                          {c.name} {c.nickname ? `(${c.nickname})` : ''}
+                        </button>
+                      ))}
+                      {filteredClients.length === 0 && (
+                        <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-secondary flex items-center gap-2 text-primary" onClick={handleOpenQuickForm}>
+                          <UserPlus size={14} /> Cadastrar "{clientSearch.trim()}"
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Add Client Inline Form */}
+                {showQuickForm && (
+                  <div className="mt-2 p-3 border border-primary/30 rounded-lg bg-accent/10 space-y-3">
+                    <p className="text-xs font-semibold text-primary flex items-center gap-1"><UserPlus size={13} /> Cadastro rápido de cliente</p>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nome completo *</Label>
+                      <Input
+                        value={quickName}
+                        onChange={e => {
+                          setQuickName(e.target.value);
+                          setQuickErrors(prev => ({ ...prev, name: e.target.value.trim().length < 3 ? 'Nome deve ter pelo menos 3 caracteres' : undefined }));
+                        }}
+                        placeholder="Nome completo do cliente"
+                        className="h-9 text-sm"
+                      />
+                      {quickErrors.name && <p className="text-xs text-destructive mt-1">{quickErrors.name}</p>}
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">WhatsApp * (com DDD)</Label>
+                      <Input
+                        value={quickWhatsapp}
+                        onChange={e => {
+                          const masked = phoneMask(e.target.value);
+                          setQuickWhatsapp(masked);
+                          const digits = masked.replace(/\D/g, '');
+                          setQuickErrors(prev => ({ ...prev, whatsapp: digits.length !== 11 ? 'WhatsApp deve ter 11 dígitos (com DDD)' : undefined }));
+                        }}
+                        placeholder="(11) 99999-9999"
+                        className="h-9 text-sm"
+                      />
+                      {quickErrors.whatsapp && <p className="text-xs text-destructive mt-1">{quickErrors.whatsapp}</p>}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="flex-1 gap-1"
+                        disabled={!isQuickFormValid}
+                        onClick={handleSaveQuickClient}
+                      >
+                        <Save size={13} /> Salvar e Continuar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setShowQuickForm(false); setClientSearch(''); }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
             )}
           </div>
+
 
           {/* Active Cashback Alert */}
           {activeCashback && (
