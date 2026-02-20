@@ -48,19 +48,43 @@ function cleanPhone(phone: string): string {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+export interface WhatsAppSendResult {
+  success: boolean;
+  errorCode?: number;
+  errorMessage?: string;
+}
+
+/**
+ * Traduz códigos de erro da Meta para mensagens em português claras.
+ */
+export function getWhatsAppErrorHint(code: number): string {
+  switch (code) {
+    case 131030:
+      return 'Número não está na lista de destinatários permitidos. No modo de teste, adicione o número em Meta for Developers → WhatsApp → API Setup → "To" phone numbers.';
+    case 190:
+      return 'Access Token inválido ou expirado. Gere um novo token no painel da Meta e atualize nas configurações.';
+    case 131047:
+      return 'Mensagem fora da janela de 24h. Use um template de mensagem aprovado pela Meta.';
+    case 131026:
+      return 'Número de destinatário inválido. Verifique se o número está correto com o código do país (55).';
+    default:
+      return `Erro na API Meta (código ${code}). Verifique as configurações do WhatsApp.`;
+  }
+}
+
 /**
  * Envia uma mensagem de texto simples via Meta WhatsApp Cloud API.
- * Retorna `true` em caso de sucesso, `false` em falha.
+ * Retorna objeto com `{ success, errorCode?, errorMessage? }`.
  */
 export async function sendWhatsAppMessage(
   phone: string,
   message: string
-): Promise<boolean> {
+): Promise<WhatsAppSendResult> {
   const config = await getWhatsAppConfig();
 
   if (!config?.enabled || !config.phoneNumberId || !config.accessToken) {
     console.info('[WhatsApp] Integração não configurada — mensagem não enviada.');
-    return false;
+    return { success: false, errorMessage: 'Integração não configurada.' };
   }
 
   const url = `https://graph.facebook.com/${META_API_VERSION}/${config.phoneNumberId}/messages`;
@@ -83,14 +107,16 @@ export async function sendWhatsAppMessage(
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
+      const errorCode: number | undefined = err?.error?.code;
+      const errorMessage = errorCode ? getWhatsAppErrorHint(errorCode) : (err?.error?.message || 'Erro desconhecido na API Meta.');
       console.error('[WhatsApp] Erro na API Meta:', err);
-      return false;
+      return { success: false, errorCode, errorMessage };
     }
 
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('[WhatsApp] Falha ao conectar com a API Meta:', err);
-    return false;
+    return { success: false, errorMessage: 'Falha de conexão com a API Meta. Verifique sua internet.' };
   }
 }
 
@@ -156,8 +182,8 @@ export async function sendServiceConfirmation(
   client: Client,
   service: Service,
   barberName?: string
-): Promise<boolean> {
-  if (!client.whatsapp) return false;
+): Promise<WhatsAppSendResult> {
+  if (!client.whatsapp) return { success: false, errorMessage: 'Cliente sem WhatsApp cadastrado.' };
 
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
@@ -185,8 +211,8 @@ export async function sendServiceConfirmation(
 export async function sendPaymentConfirmation(
   client: Client,
   plan: Plan
-): Promise<boolean> {
-  if (!client.whatsapp) return false;
+): Promise<WhatsAppSendResult> {
+  if (!client.whatsapp) return { success: false, errorMessage: 'Cliente sem WhatsApp cadastrado.' };
 
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
@@ -207,18 +233,16 @@ export async function sendPaymentConfirmation(
 
 /**
  * Envia mensagem de cashback ativado.
- * Compatibilidade com código existente em ServiceFormPage.tsx.
  */
 export async function sendCashbackMessage(
   clientName: string,
   percentage: number,
   expirationDate: string,
   phone: string
-): Promise<boolean> {
+): Promise<WhatsAppSendResult> {
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
 
-  // Tenta primeiro o template salvo no banco, depois usa o padrão
   const savedTemplate = await db.messageTemplates
     .where('type').equals('cashback_activated').first();
 
@@ -236,14 +260,13 @@ export async function sendCashbackMessage(
 
 /**
  * Envia lembrete de cashback expirando.
- * Compatibilidade com código existente em DashboardPage.tsx.
  */
 export async function sendCashbackReminder(
   clientName: string,
   percentage: number,
   daysLeft: number,
   phone: string
-): Promise<boolean> {
+): Promise<WhatsAppSendResult> {
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
 

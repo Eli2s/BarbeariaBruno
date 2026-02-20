@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, CheckCircle, XCircle, Eye, EyeOff, ExternalLink, ChevronDown, ChevronUp, MessageCircle, Save, Info } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Eye, EyeOff, ExternalLink, ChevronDown, ChevronUp, MessageCircle, Save, Info, Wifi, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { getWhatsAppConfig, saveWhatsAppConfig } from '@/lib/whatsappApi';
+import { getWhatsAppConfig, saveWhatsAppConfig, sendWhatsAppMessage } from '@/lib/whatsappApi';
 import type { WhatsAppConfig } from '@/types';
 import { phoneMask } from '@/lib/format';
 
@@ -28,6 +28,8 @@ export default function WhatsAppSettingsPage() {
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; errorCode?: number } | null>(null);
 
   useEffect(() => {
     getWhatsAppConfig().then(cfg => {
@@ -53,6 +55,34 @@ export default function WhatsAppSettingsPage() {
       toast.error('Erro ao salvar configurações.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!config.businessPhone?.trim()) {
+      toast.error('Preencha o Número WhatsApp Business para testar.');
+      return;
+    }
+    if (!config.phoneNumberId?.trim() || !config.accessToken?.trim()) {
+      toast.error('Salve as configurações antes de testar.');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await sendWhatsAppMessage(
+        config.businessPhone,
+        '✅ Teste de conexão BrunoFlow — integração funcionando!'
+      );
+      setTestResult({
+        success: result.success,
+        message: result.success
+          ? 'Mensagem enviada com sucesso!'
+          : (result.errorMessage || 'Falha ao enviar mensagem.'),
+        errorCode: result.errorCode,
+      });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -178,6 +208,92 @@ export default function WhatsAppSettingsPage() {
               <Save size={16} />
               {saving ? 'Salvando...' : 'Salvar Configurações'}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Test Connection */}
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Wifi size={14} />
+              Testar Conexão
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Envia uma mensagem de teste para o Número WhatsApp Business configurado acima.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={handleTest}
+              disabled={testing}
+            >
+              <Wifi size={15} />
+              {testing ? 'Enviando mensagem de teste...' : 'Testar Conexão'}
+            </Button>
+
+            {testResult && (
+              <div className={`p-3 rounded-lg border text-sm flex flex-col gap-1 ${
+                testResult.success
+                  ? 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+              }`}>
+                <p className="font-semibold">
+                  {testResult.success ? '✅ Conexão funcionando!' : '❌ Falha no envio'}
+                </p>
+                <p className="text-xs">{testResult.message}</p>
+                {!testResult.success && testResult.errorCode === 131030 && (
+                  <div className="flex gap-2 mt-1 flex-wrap">
+                    <a
+                      href="https://developers.facebook.com/apps"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs underline flex items-center gap-1"
+                    >
+                      <ExternalLink size={11} /> Abrir lista de destinatários
+                    </a>
+                    <a
+                      href="https://developers.facebook.com/docs/whatsapp/overview/getting-opt-in"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs underline flex items-center gap-1"
+                    >
+                      <ExternalLink size={11} /> Ver como publicar o app
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Meta Dev Mode Warning */}
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-amber-500 shrink-0" />
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Modo de Desenvolvimento da Meta</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              No modo de teste, mensagens só podem ser enviadas para números cadastrados manualmente no painel da Meta. Para enviar para qualquer cliente, publique seu app e solicite a permissão <strong>whatsapp_business_messaging</strong>.
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-xs border-amber-500/30 text-amber-700 dark:text-amber-400"
+                onClick={() => window.open('https://developers.facebook.com/apps', '_blank')}
+              >
+                <ExternalLink size={12} /> Abrir lista de destinatários
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-xs border-amber-500/30 text-amber-700 dark:text-amber-400"
+                onClick={() => window.open('https://developers.facebook.com/docs/whatsapp/overview/get-started', '_blank')}
+              >
+                <ExternalLink size={12} /> Ver como publicar app
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

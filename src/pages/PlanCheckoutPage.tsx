@@ -70,6 +70,13 @@ export default function PlanCheckoutPage() {
         ...plan,
         nextCharge: format(addDays(new Date(), days), 'yyyy-MM-dd'),
       })
+        .then(result => {
+          if (result.success) {
+            toast.success('Confirmação de pagamento enviada via WhatsApp! 📱');
+          } else if (result.errorMessage) {
+            toast.warning('WhatsApp não enviado', { description: result.errorMessage });
+          }
+        })
         .catch(() => {});
     }
   };
