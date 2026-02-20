@@ -1,97 +1,133 @@
-## Simplificação e Foco do Dashboard — BrunoFlow
 
-### O que o usuário quer
+## Refatoração Focada: Dashboard + Gráfico por Barbeiro + Pedidos Expandido
 
-O dashboard atual está sobrecarregado. A proposta é:
+### O que existe hoje vs. o que o usuário quer
 
-1. **Remover a seção "Vendas de Produtos"** do Dashboard — ela vai para a aba de Pedidos
-2. **Simplificar o gráfico de faturamento** — alterar o grafito de barra para algo mais moderno por período, mas torná-lo mais limpo e referenciado na imagem enviada (barras empilhadas Serviços + Loja, mês/semana/ano)
-3. **Focar o Dashboard em "Desempenho por Barbeiro"** — a seção principal passa a ser os cards de cada barbeiro com apenas: foto + nome + Atendimentos + Valor a receber
-4. **Remover o gráfico de linha individual por barbeiro** (que é redundante com os cards)
+**Dashboard atual:**
+- Tem gráfico de barras empilhadas (Serviços + Loja) com filtro Semanal/Mensal/Anual — **manter e melhorar**
+- Tem seção "Desempenho por Barbeiro" com cards (foto + nome + atendimentos + valor a receber) — **está bem, mas falta gráfico individual**
+- NÃO tem gráfico de linha por barbeiro individual — **adicionar**
+- Seção de vendas de produtos foi removida do Dashboard anteriormente — **OK, não recolocar**
 
----
+**Pedidos atual:**
+- Tem 4 cards de vendas (Faturamento, Variação, Top 5, Estoque baixo)
+- Falta: Card 5 (Total de produtos vendidos) e Card 6 (Ticket médio por pedido)
+- Falta: filtro com opção "30 dias" (só tem Semanal/Mensal)
 
-### Mudanças por arquivo
+**O que muda:**
 
-#### `src/pages/DashboardPage.tsx`
-
-**Remover completamente:**
-
-- Toda a seção `{/* ── Vendas de Produtos ── */}` (linhas 434–558) com os 4 cards (faturamento produtos, variação, top 5, estoque baixo)
-- O gráfico de linha individual por barbeiro (linhas 372–432)
-- Estados e lógica não mais usados: `ordersPeriod`, `getOrdersCutoff`, `ordersCutoff`, `prevCutoff`, `prevEnd`, `paidOrders`, `periodOrders`, `prevOrders`, `productRevenue`, `prevProductRevenue`, `revenueVariation`, `productSales`, `top5`, `lowStock`, `barberChartData`, `getBarberChartData`, `selectedBarber`
-- Imports não mais usados: `LineChart`, `Line`, `ShoppingBag`, `AlertTriangle`, `Package`, `TrendingDown`
-
-**Manter e melhorar:**
-
-- Cards métricos (4 cards + Ticket Médio + Top Barbeiro)
-- Gráfico de barras de faturamento com filtro Semanal/Mensal/Anual (inspirado na imagem: barras empilhadas azul = Serviços, vermelho = Vendas Loja, com total no canto superior direito do card)
-
-**Melhorar a seção "Desempenho por Barbeiro":**
-
-- Mover para posição mais proeminente (logo após os cards métricos, antes do gráfico)
-- Filtro de período próprio: Semanal / Mensal / Últimos 30 dias
-- Cards responsivos com layout grid:
-  - Mobile: `grid-cols-1` com card por barbeiro (linha completa)
-  - Desktop: `grid-cols-2 lg:grid-cols-3` com cards maiores
-- Cada card: foto/avatar (40px) + nome + badge período + número grande de atendimentos + valor a receber em destaque primário
-- Linha de totais ao final (somando todos os barbeiros)
-- O card "selecionado/logado" fica preparado com `highlightedBarberId: null` — border accent quando houver
-
-**Layout final do Dashboard (de cima pra baixo):**
-
-1. Header mobile (botão + título)
-2. Cards métricos (4 cards em grid 2x2)
-3. Cards secundários: Ticket Médio + Top Barbeiro
-4. **Desempenho por Barbeiro** (grid de cards com filtro de período)
-5. Gráfico de Faturamento (barras empilhadas, filtro Semanal/Mensal/Anual)
+1. **DashboardPage.tsx** — adicionar gráfico de linha individual por barbeiro (com seletor de barbeiro + período)
+2. **OrdersPage.tsx** — adicionar 2 cards extras + opção "30 dias" no filtro
 
 ---
 
-#### `src/pages/OrdersPage.tsx`
+### Arquivo 1: `src/pages/DashboardPage.tsx`
 
-**Adicionar seção de Vendas de Produtos no topo** (4 cards que saem do Dashboard):
+**Adicionar estado:** `selectedBarber: number | 'todos'` com valor inicial `'todos'`
 
-- Precisamos ver o arquivo atual para saber onde encaixar
+**Nova seção "Gráfico por Barbeiro"** (inserida ENTRE a seção de cards de barbeiro e o gráfico de faturamento):
 
-**Verificação necessária:** Ler `OrdersPage.tsx` antes de implementar para saber o layout atual e onde adicionar os cards.
+Card com:
+- Header: título "Valor a Receber por Barbeiro" + dropdown "Selecionar Barbeiro" (opção "Todos os Barbeiros" + um item por barbeiro) + dropdown de período (reutiliza `barberPeriod`)
+- Quando `selectedBarber === 'todos'`: BarChart com uma barra por barbeiro, mostrando "Valor a receber" no período — comparação visual lado a lado
+- Quando barbeiro específico selecionado: LineChart dia a dia (últimos 7 dias para semanal, ou mês a mês para mensal/30dias)
+
+**Função nova `getBarberChartData()`:**
+```
+Se selectedBarber === 'todos':
+  → retorna array [{ name: 'João', valor: 320 }, ...] para BarChart
+  
+Se barbeiro específico (semanal):
+  → eachDayOfInterval(subDays(now, 6), now)
+  → filtra allServices por barberId + date
+  → soma barberCommission por dia
+  → retorna [{ label: 'Seg', valor: 120 }, ...]
+  
+Se barbeiro específico (mensal ou 30dias):
+  → últimos 6 meses ou últimos 30 dias em semanas
+  → retorna dados por semana ou mês
+```
+
+**Imports novos necessários:**
+- `LineChart, Line` do recharts (já instalado, já importado no projeto)
+- `eachDayOfInterval` já está importado
+
+**Layout da nova seção:**
+```
+[Card rounded-xl shadow-md]
+  [Header: título + Select Barbeiro + Select Período]
+  [Se todos: BarChart horizontal com nome/valor]
+  [Se um: LineChart com linha accent cor primária]
+  [Estado vazio: "Nenhum atendimento no período"]
+```
+
+---
+
+### Arquivo 2: `src/pages/OrdersPage.tsx`
+
+**Mudanças pequenas e cirúrgicas:**
+
+1. Alterar tipo de `ordersPeriod` para `'semanal' | 'mensal' | '30dias'`
+2. Atualizar `getCutoff` para suportar `'30dias'` → `subDays(now, 30)`
+3. Atualizar `prevCutoff`/`prevEnd` para suportar `'30dias'`
+4. Adicionar opção `<SelectItem value="30dias">Últimos 30 dias</SelectItem>`
+
+**Adicionar 2 novos cards (Card 5 e Card 6):**
+
+Card 5 — Total produtos vendidos (quantidade de itens, não pedidos):
+```
+totalItemsSold = periodOrders.flatMap(o => o.items).reduce((s, item) => s + (item.quantity ?? 1), 0)
+```
+Card visual: número grande + "itens vendidos" + ícone ShoppingCart
+
+Card 6 — Ticket médio por pedido:
+```
+avgOrderValue = periodOrders.length > 0 ? productRevenue / periodOrders.length : 0
+```
+Card visual: valor formatado + "por pedido" + ícone CreditCard
+
+**Grid dos cards:** muda de `grid-cols-1 md:grid-cols-2` para manter 2 colunas mas agora com 6 cards total (3 linhas de 2 no desktop)
 
 ---
 
 ### Detalhes técnicos
 
-**Estados que permanecem no DashboardPage:**
+**Imports adicionados ao Dashboard:**
+- `LineChart, Line` do recharts
 
-- `chartPeriod: 'semanal' | 'mensal' | 'anual'`
-- `barberPeriod: 'semanal' | 'mensal' | '30dias'`
-- `refreshKey`
+**Nenhum arquivo novo criado** — apenas edições em 2 arquivos existentes.
 
-**Estados removidos:**
+**Sem novas dependências** — tudo já instalado.
 
-- `selectedBarber`, `ordersPeriod` e todas as variáveis de vendas de produtos
-
-**Queries que permanecem:**
-
-- `clients`, `plans`, `allPlans`, `orders`, `allServices`, `barbers`
-
-**Query removida:**
-
-- `products` (não mais necessária no Dashboard)
-
-**Funções que permanecem:**
-
-- `getBarberStats(barberId, period)` — retorna `{ commission, count }`
-- `getChartData()` — gera dados para o BarChart
-- `getBarberCutoff(period)`
-
-**Funções removidas:**
-
-- `getBarberChartData()` (linha chart individual)
-- `getOrdersCutoff(period)`
+**Reatividade:** `useLiveQuery` já garante atualização automática. Criar atendimento → "Valor a receber" muda instantaneamente no card E no gráfico.
 
 ---
 
 ### Ordem de implementação
 
-1. `src/pages/DashboardPage.tsx` — remover seções desnecessárias + reorganizar + melhorar cards de barbeiro
-2. `src/pages/OrdersPage.tsx` — adicionar cards de vendas de produtos no topo da tela de pedidos
+1. `src/pages/DashboardPage.tsx` — adicionar gráfico individual/comparativo de barbeiros
+2. `src/pages/OrdersPage.tsx` — adicionar 2 cards + opção 30 dias no filtro
+
+---
+
+### Resultado visual esperado (Dashboard)
+
+```text
+┌─────────────────────────────────────────────────────┐
+│  [Cards métricos 2x2]                               │
+│  [Ticket Médio]  [Top Barbeiro]                     │
+├─────────────────────────────────────────────────────┤
+│  Desempenho por Barbeiro         [Semanal ▼] [↻]   │
+│  [Card João] [Card Pedro] [Card André]              │
+│  Total: 42 atend.  R$ 2.840,00                     │
+├─────────────────────────────────────────────────────┤
+│  Valor a Receber por Barbeiro                       │
+│  [Todos ▼]  [Mensal ▼]                             │
+│  BarChart: João=R$900 | Pedro=R$720 | André=R$640  │
+│  ── ou ──                                           │
+│  [João ▼] LineChart dia a dia                      │
+├─────────────────────────────────────────────────────┤
+│  Faturamento Geral    [Mensal (6m) ▼]              │
+│  BarChart empilhado: Serviços + Vendas             │
+└─────────────────────────────────────────────────────┘
+```
