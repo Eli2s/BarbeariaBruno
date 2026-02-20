@@ -1,58 +1,73 @@
 
-## Correção dos Gráficos do Dashboard
+## Melhoria: Feedback de Erros do WhatsApp na Interface
 
-### Causa raiz identificada
+### Diagnóstico confirmado
 
-O console mostra dois erros:
-- `Warning: Function components cannot be given refs. Check the render method of DashboardPage at CustomTooltip`
-- `Warning: Function components cannot be given refs. Check the render method of DashboardPage at CartesianGrid`
+O código está funcionando corretamente. A API Meta retorna o erro `#131030 - Recipient phone number not in allowed list` porque o app da Meta ainda está em modo **Desenvolvimento/Teste**, que restringe o envio apenas para números previamente cadastrados na lista de destinatários do painel da Meta.
 
-O `CustomTooltip` está declarado **dentro** da função `DashboardPage` (linha 216), o que faz o React recriá-lo em cada render. O Recharts tenta passar uma `ref` para ele e falha — isso faz os gráficos simplesmente não aparecerem.
+Isso NÃO é um bug de código — é uma limitação da Meta que precisa de resolução no painel deles. Porém, o sistema falha silenciosamente (fire-and-forget), então o admin não sabe que o envio falhou.
 
-### Solução
+### O que será implementado
 
-#### `src/pages/DashboardPage.tsx`
+#### 1. `src/lib/whatsappApi.ts` — Retornar mensagem de erro detalhada
 
-**1. Mover `CustomTooltip` para fora do componente** (antes de `export default function DashboardPage`), recebendo `formatCurrency` como prop ou usando import direto:
+Atualmente `sendWhatsAppMessage` retorna apenas `true/false`. Vamos expandir para retornar um objeto com `{ success: boolean; errorCode?: number; errorMessage?: string }` para que os chamadores possam reagir ao tipo de erro.
 
-```tsx
-// FORA do componente — corrige o erro de ref
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-      <p className="text-xs font-semibold mb-1.5">{label}</p>
-      {payload.map((entry: any, i: number) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="font-semibold">{formatCurrency(entry.value)}</span>
-        </div>
-      ))}
-      <div className="border-t border-border mt-1.5 pt-1.5">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="font-semibold">Total:</span>
-          <span className="font-bold text-primary">
-            {formatCurrency(payload.reduce((s: number, p: any) => s + p.value, 0))}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
+Criar também uma função auxiliar `getWhatsAppErrorHint(code: number): string` que traduz códigos de erro da Meta para mensagens em português claras:
+- `131030` → "Número não está na lista de destinatários permitidos. No modo de teste, adicione o número em Meta for Developers → WhatsApp → API Setup."
+- `190` → "Access Token inválido ou expirado. Atualize o token nas configurações."
+- `131047` → "Mensagem fora da janela de 24h. Use um template aprovado pela Meta."
+- Outros → "Erro na API Meta (código X). Verifique as configurações."
+
+#### 2. `src/pages/WhatsAppSettingsPage.tsx` — Botão "Testar Conexão" com feedback real
+
+Adicionar um botão **"Testar Conexão"** que:
+- Envia uma mensagem de teste para o próprio `businessPhone` configurado
+- Exibe resultado inline (não apenas toast):
+  - Verde: "✅ Conexão funcionando! Mensagem enviada."
+  - Vermelho: "❌ Erro #131030: Número não está na lista de teste..." com link direto para o painel da Meta
+
+Adicionar também um **aviso informativo** explicando a diferença entre modo de desenvolvimento e produção da Meta, com links diretos:
+
+```
+⚠️ Modo de Desenvolvimento da Meta
+No modo de teste, mensagens só podem ser enviadas para
+números cadastrados no painel. Para uso em produção, publique
+seu app na Meta e solicite permissão whatsapp_business_messaging.
+
+[Abrir lista de destinatários] [Ver como publicar app]
 ```
 
-**2. Os tooltips inline nos gráficos de barbeiro** (dentro do `<Tooltip content={...}>`) também precisam ser convertidos para funções nomeadas externas ao componente para evitar o mesmo problema.
+#### 3. `src/pages/ServiceFormPage.tsx` — Toast de erro quando WhatsApp falha
 
-Criar também:
-```tsx
-function BarberTooltip({ active, payload, label }: any) { ... }
-function LineTooltip({ active, payload, label }: any) { ... }
+Quando `sendServiceConfirmation` retornar falha, exibir um toast com dica:
+```
+toast.warning('WhatsApp não enviado', {
+  description: 'Número não está na lista de destinatários permitidos no modo de teste.'
+})
 ```
 
-### Technical summary
+Em vez de falhar silenciosamente.
 
-- Mudança cirúrgica: apenas move 3 funções de dentro para fora do componente
-- Zero mudanças de layout, lógica ou dados
-- Corrige os dois avisos do console que impedem a renderização dos gráficos
-- Nenhuma dependência nova
+#### 4. `src/pages/PlanCheckoutPage.tsx` — Mesmo tratamento
+
+Mesmo padrão do item 3 acima.
+
+### Arquivos modificados
+
+1. `src/lib/whatsappApi.ts` — Retornar objeto com código de erro + função de hint em português
+2. `src/pages/WhatsAppSettingsPage.tsx` — Botão Testar Conexão + aviso sobre modo de desenvolvimento
+3. `src/pages/ServiceFormPage.tsx` — Toast de aviso quando WhatsApp falha
+4. `src/pages/PlanCheckoutPage.tsx` — Toast de aviso quando WhatsApp falha
+
+### Sem mudanças em
+
+- Banco de dados (Dexie) — sem alterações
+- Edge function — sem alterações
+- Tipos — sem alterações
+- Lógica de salvamento — sem alterações
+- Fluxo principal de atendimento/pagamento — continua funcionando normalmente, WhatsApp é sempre secundário
+
+### Impacto no usuário
+
+O admin agora verá exatamente o que aconteceu com o envio do WhatsApp, com instruções claras de como resolver (adicionar número na Meta ou publicar o app), sem precisar abrir o console do navegador.
