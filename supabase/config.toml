@@ -2,3 +2,19 @@ project_id = "wnlyxmoqjfwgcndqyyqa"
 
 [functions.send-whatsapp]
 verify_jwt = false
+
+[functions.whatsapp-oauth-init]
+verify_jwt = false
+
+[functions.whatsapp-oauth-callback]
+verify_jwt = false
+
+[functions.whatsapp-token-refresh]
+verify_jwt = false
+
+[functions.whatsapp-get-credentials]
+verify_jwt = false
+
+[functions.whatsapp-disconnect]
+verify_jwt = false
+
