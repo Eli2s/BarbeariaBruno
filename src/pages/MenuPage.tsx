@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { exportClients, exportServices, exportPlans } from '@/lib/csv';
+import { clearAndReseed } from '@/db/seed';
 import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Sun, Moon, Download, LogOut, Scissors, Package, ShoppingBag, Store, Share2, Copy, Users, MessageSquare } from 'lucide-react';
+import { Sun, Moon, Download, LogOut, Scissors, Package, ShoppingBag, Store, Share2, Copy, Users, MessageSquare, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -24,11 +25,25 @@ export default function MenuPage() {
     setIsDark(!isDark);
   };
 
+  const [reseeding, setReseeding] = useState(false);
+
   const handleExport = async (type: 'clients' | 'services' | 'plans') => {
     if (type === 'clients') await exportClients();
     else if (type === 'services') await exportServices();
     else await exportPlans();
     toast.success('Arquivo exportado!');
+  };
+
+  const handleClearReseed = async () => {
+    setReseeding(true);
+    try {
+      await clearAndReseed();
+      toast.success('Dados demo recarregados com sucesso!');
+    } catch {
+      toast.error('Erro ao recarregar dados.');
+    } finally {
+      setReseeding(false);
+    }
   };
 
   const storeUrl = `${window.location.origin}/loja`;
@@ -156,6 +171,16 @@ export default function MenuPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Button
+          variant="outline"
+          className="w-full gap-2 text-muted-foreground"
+          onClick={handleClearReseed}
+          disabled={reseeding}
+        >
+          <RefreshCw size={16} className={reseeding ? 'animate-spin' : ''} />
+          {reseeding ? 'Recarregando...' : 'Recarregar Dados Demo'}
+        </Button>
 
         <Button
           variant="outline"
