@@ -5,11 +5,11 @@
  */
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
 
 function edgeUrl(fn: string): string {
   return `${SUPABASE_URL}/functions/v1/${fn}`;
 }
+
 
 export interface OAuthCredentials {
   connected: boolean;
