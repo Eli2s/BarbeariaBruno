@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      whatsapp_credentials: {
+        Row: {
+          access_token: string | null
+          connected_at: string | null
+          created_at: string
+          display_phone_number: string | null
+          id: number
+          is_connected: boolean
+          phone_number_id: string | null
+          token_expires_at: string | null
+          updated_at: string
+          waba_id: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          connected_at?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: number
+          is_connected?: boolean
+          phone_number_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          waba_id?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          connected_at?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: number
+          is_connected?: boolean
+          phone_number_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
