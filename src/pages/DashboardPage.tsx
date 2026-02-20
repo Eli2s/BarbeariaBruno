@@ -11,11 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Users, CreditCard, DollarSign, UserPlus,
   BarChart3, Scissors, RefreshCw, TrendingUp,
-  Award, User
+  Award, User, GitBranch
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  CartesianGrid
+  CartesianGrid, LineChart, Line
 } from 'recharts';
 import {
   format, subMonths, isBefore, parseISO, differenceInDays,
@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('mensal');
   const [barberPeriod, setBarberPeriod] = useState<BarberPeriod>('mensal');
+  const [selectedBarber, setSelectedBarber] = useState<number | 'todos'>('todos');
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Expire cashbacks and send reminders
@@ -159,6 +160,51 @@ export default function DashboardPage() {
     },
     { commission: 0, count: 0 }
   );
+
+  // ─── Barber chart data ───────────────────────────────────────
+  const getBarberChartData = () => {
+    const cutoff = getBarberCutoff(barberPeriod);
+    if (selectedBarber === 'todos') {
+      return barbers.map(b => {
+        const stats = getBarberStats(b.id!);
+        return { name: b.nickname || b.name, valor: stats.commission };
+      });
+    }
+    // individual barber
+    if (barberPeriod === 'semanal') {
+      const days = eachDayOfInterval({ start: subDays(now, 6), end: now });
+      return days.map(day => {
+        const key = format(day, 'yyyy-MM-dd');
+        const label = format(day, 'EEE', { locale: ptBR });
+        const valor = allServices
+          .filter(s => s.barberId === selectedBarber && s.date.startsWith(key))
+          .reduce((s, sv) => s + (sv.barberCommission ?? 0), 0);
+        return { label: label.charAt(0).toUpperCase() + label.slice(1), valor };
+      });
+    }
+    // mensal or 30dias — by week chunks
+    const days = barberPeriod === '30dias' ? 30 : 180;
+    const weeks: { label: string; valor: number }[] = [];
+    const totalWeeks = Math.ceil(days / 7);
+    for (let i = totalWeeks - 1; i >= 0; i--) {
+      const weekEnd = subDays(now, i * 7);
+      const weekStart = subDays(now, i * 7 + 6);
+      const startKey = format(weekStart, 'yyyy-MM-dd');
+      const endKey = format(weekEnd, 'yyyy-MM-dd');
+      const label = format(weekEnd, 'dd/MM');
+      const valor = allServices
+        .filter(s => s.barberId === selectedBarber && s.date.slice(0, 10) >= startKey && s.date.slice(0, 10) <= endKey)
+        .reduce((s, sv) => s + (sv.barberCommission ?? 0), 0);
+      weeks.push({ label, valor });
+    }
+    return weeks;
+  };
+
+  const barberChartData = getBarberChartData();
+  const selectedBarberName = selectedBarber === 'todos'
+    ? 'Todos'
+    : (barbers.find(b => b.id === selectedBarber)?.nickname || barbers.find(b => b.id === selectedBarber)?.name || '');
+  const barberChartEmpty = barberChartData.every(d => d.valor === 0);
 
   const metrics = [
     { label: 'Total Clientes', value: clients.length, icon: Users, path: '/clientes', color: 'from-blue-500 to-blue-600' },
@@ -351,6 +397,101 @@ export default function DashboardPage() {
                       <p className="text-[10px] text-muted-foreground">A receber</p>
                     </div>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Gráfico por Barbeiro ── */}
+        {barbers.length > 0 && (
+          <Card className="overflow-hidden rounded-xl shadow-md">
+            <CardContent className="p-4 space-y-4">
+              {/* Header */}
+              <div className="flex flex-wrap items-center gap-2 justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                    <GitBranch size={16} className="text-white" />
+                  </div>
+                  <span className="text-sm font-semibold">Valor a Receber por Barbeiro</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Select value={String(selectedBarber)} onValueChange={v => setSelectedBarber(v === 'todos' ? 'todos' : Number(v))}>
+                    <SelectTrigger className="h-8 text-xs w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos os Barbeiros</SelectItem>
+                      {barbers.map(b => (
+                        <SelectItem key={b.id} value={String(b.id)}>{b.nickname || b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
+                    <SelectTrigger className="h-8 text-xs w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="semanal">Semanal</SelectItem>
+                      <SelectItem value="mensal">Este mês</SelectItem>
+                      <SelectItem value="30dias">30 dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {barberChartEmpty ? (
+                <div className="h-40 flex items-center justify-center">
+                  <p className="text-sm text-muted-foreground">Nenhum atendimento no período</p>
+                </div>
+              ) : selectedBarber === 'todos' ? (
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barberChartData} barCategoryGap="30%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+                              <p className="text-xs font-semibold mb-1">{label}</p>
+                              <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
+                              <p className="text-[10px] text-muted-foreground">Valor a receber</p>
+                            </div>
+                          );
+                        }}
+                        cursor={{ fill: 'hsl(var(--primary) / 0.05)' }}
+                      />
+                      <Bar dataKey="valor" name="Valor a receber" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-52">
+                  <p className="text-xs text-muted-foreground mb-2">{selectedBarberName} — {periodLabel}</p>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={barberChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+                              <p className="text-xs font-semibold mb-1">{label}</p>
+                              <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
+                              <p className="text-[10px] text-muted-foreground">Valor a receber</p>
+                            </div>
+                          );
+                        }}
+                        cursor={{ stroke: 'hsl(var(--primary) / 0.2)' }}
+                      />
+                      <Line type="monotone" dataKey="valor" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 4, fill: 'hsl(var(--primary))' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               )}
             </CardContent>
