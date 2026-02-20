@@ -228,7 +228,7 @@ export default function ServiceFormPage() {
       const client = clients.find(c => c.id === clientId);
       if (client?.whatsapp) {
         sendCashbackMessage(client.name, cashbackPercentage, expDate, client.whatsapp)
-          .then(ok => ok ? toast.success('Cashback enviado via WhatsApp!') : null)
+          .then(result => result.success ? toast.success('Cashback enviado via WhatsApp!') : null)
           .catch(() => {});
       }
     }
@@ -252,7 +252,13 @@ export default function ServiceFormPage() {
       };
       const barber = barbers.find(b => b.id === barberIdNum);
       sendServiceConfirmation(registeredClient, savedService as any, barber?.nickname || barber?.name)
-        .then(ok => { if (ok) toast.success('Confirmação enviada via WhatsApp! 📱'); })
+        .then(result => {
+          if (result.success) {
+            toast.success('Confirmação enviada via WhatsApp! 📱');
+          } else if (result.errorMessage) {
+            toast.warning('WhatsApp não enviado', { description: result.errorMessage });
+          }
+        })
         .catch(() => {});
     }
 
