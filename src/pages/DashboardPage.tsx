@@ -28,6 +28,54 @@ type BarberPeriod = 'semanal' | 'mensal' | '30dias';
 
 const highlightedBarberId: number | null = null; // ready for future auth integration
 
+// ── Tooltip components must be defined OUTSIDE the page component
+// so Recharts can correctly attach refs (avoids "Function components cannot be given refs" warning)
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+      <p className="text-xs font-semibold mb-1.5">{label}</p>
+      {payload.map((entry: any, i: number) => (
+        <div key={i} className="flex items-center gap-2 text-xs">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
+          <span className="text-muted-foreground">{entry.name}:</span>
+          <span className="font-semibold">{formatCurrency(entry.value)}</span>
+        </div>
+      ))}
+      <div className="border-t border-border mt-1.5 pt-1.5">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-semibold">Total:</span>
+          <span className="font-bold text-primary">
+            {formatCurrency(payload.reduce((s: number, p: any) => s + p.value, 0))}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarberBarTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+      <p className="text-xs font-semibold mb-1">{label}</p>
+      <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
+      <p className="text-[10px] text-muted-foreground">Valor a receber</p>
+    </div>
+  );
+}
+
+function BarberLineTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+      <p className="text-xs font-semibold mb-1">{label}</p>
+      <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
+      <p className="text-[10px] text-muted-foreground">Valor a receber</p>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('mensal');
@@ -212,30 +260,6 @@ export default function DashboardPage() {
     { label: 'Receita Mensal', value: formatCurrency(totalRevenue), icon: DollarSign, path: '/planos', color: 'from-emerald-500 to-green-600' },
     { label: 'Novos este mês', value: newClientsThisMonth, icon: UserPlus, path: '/clientes', color: 'from-orange-500 to-red-500' },
   ];
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload) return null;
-    return (
-      <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-        <p className="text-xs font-semibold mb-1.5">{label}</p>
-        {payload.map((entry: any, i: number) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-            <span className="text-muted-foreground">{entry.name}:</span>
-            <span className="font-semibold">{formatCurrency(entry.value)}</span>
-          </div>
-        ))}
-        <div className="border-t border-border mt-1.5 pt-1.5">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-semibold">Total:</span>
-            <span className="font-bold text-primary">
-              {formatCurrency(payload.reduce((s: number, p: any) => s + p.value, 0))}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const periodLabel = {
     semanal: 'Últimos 7 dias',
@@ -451,19 +475,7 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
-                          return (
-                            <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-                              <p className="text-xs font-semibold mb-1">{label}</p>
-                              <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
-                              <p className="text-[10px] text-muted-foreground">Valor a receber</p>
-                            </div>
-                          );
-                        }}
-                        cursor={{ fill: 'hsl(var(--primary) / 0.05)' }}
-                      />
+                      <Tooltip content={<BarberBarTooltip />} cursor={{ fill: 'hsl(var(--primary) / 0.05)' }} />
                       <Bar dataKey="valor" name="Valor a receber" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -476,19 +488,7 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                       <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
-                          return (
-                            <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-                              <p className="text-xs font-semibold mb-1">{label}</p>
-                              <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
-                              <p className="text-[10px] text-muted-foreground">Valor a receber</p>
-                            </div>
-                          );
-                        }}
-                        cursor={{ stroke: 'hsl(var(--primary) / 0.2)' }}
-                      />
+                      <Tooltip content={<BarberLineTooltip />} cursor={{ stroke: 'hsl(var(--primary) / 0.2)' }} />
                       <Line type="monotone" dataKey="valor" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 4, fill: 'hsl(var(--primary))' }} activeDot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
