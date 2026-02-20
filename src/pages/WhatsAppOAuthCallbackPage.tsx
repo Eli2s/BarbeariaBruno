@@ -1,10 +1,3 @@
-/**
- * WhatsAppOAuthCallbackPage
- * Handles the redirect from Meta after the user authenticates.
- * Reads `code` and `state` from query params, calls the edge function,
- * then redirects back to settings with a success/error indicator.
- */
-
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
@@ -16,6 +9,16 @@ export default function WhatsAppOAuthCallbackPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const notifyOpenerAndClose = (success: boolean) => {
+    if (window.opener) {
+      window.opener.postMessage(
+        { type: 'oauth-complete', success },
+        window.location.origin
+      );
+      window.close();
+    }
+  };
+
   useEffect(() => {
     const code = searchParams.get('code');
     const error = searchParams.get('error');
@@ -24,19 +27,32 @@ export default function WhatsAppOAuthCallbackPage() {
     if (error || !code) {
       setErrorMsg(errorDescription || error || 'Autorização negada pela Meta.');
       setStatus('error');
-      setTimeout(() => navigate('/configuracoes/whatsapp?oauth=error'), 3000);
+
+      if (window.opener) {
+        notifyOpenerAndClose(false);
+      } else {
+        setTimeout(() => navigate('/configuracoes/whatsapp?oauth=error'), 3000);
+      }
       return;
     }
 
     exchangeOAuthCode(code)
       .then(() => {
         setStatus('success');
-        setTimeout(() => navigate('/configuracoes/whatsapp?oauth=success'), 2000);
+        if (window.opener) {
+          notifyOpenerAndClose(true);
+        } else {
+          setTimeout(() => navigate('/configuracoes/whatsapp?oauth=success'), 2000);
+        }
       })
       .catch(err => {
         setErrorMsg(err.message || 'Erro ao conectar com a Meta.');
         setStatus('error');
-        setTimeout(() => navigate('/configuracoes/whatsapp?oauth=error'), 3500);
+        if (window.opener) {
+          notifyOpenerAndClose(false);
+        } else {
+          setTimeout(() => navigate('/configuracoes/whatsapp?oauth=error'), 3500);
+        }
       });
   }, []);
 
