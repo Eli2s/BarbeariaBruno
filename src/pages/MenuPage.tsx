@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Sun, Moon, Download, LogOut, Scissors, Package, ShoppingBag, Store, Share2, Copy, Users, MessageSquare, RefreshCw } from 'lucide-react';
+import { Sun, Moon, Download, LogOut, Scissors, Package, ShoppingBag, Store, Share2, Copy, Users, MessageSquare, RefreshCw, Smartphone } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -126,6 +126,18 @@ export default function MenuPage() {
             <div>
               <p className="text-sm font-semibold">Mensagens WhatsApp</p>
               <p className="text-xs text-muted-foreground">Editar templates de mensagens</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="cursor-pointer hover:bg-secondary/50 transition-colors border-green-500/20" onClick={() => navigate('/whatsapp-config')}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-green-500/15 flex items-center justify-center shrink-0">
+              <Smartphone size={16} className="text-green-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">WhatsApp Automático</p>
+              <p className="text-xs text-muted-foreground">Configurar envio via Meta Cloud API</p>
             </div>
           </CardContent>
         </Card>

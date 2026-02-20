@@ -103,6 +103,19 @@ export interface MessageTemplate {
   content: string;
 }
 
+export interface WhatsAppConfig {
+  phoneNumberId: string;
+  accessToken: string;
+  businessPhone: string;
+  shopName: string;
+  enabled: boolean;
+}
+
+export interface AppSettings {
+  key: string;
+  value: string;
+}
+
 export interface Order {
   id?: number;
   items: { productId: number; name: string; quantity: number; unitPrice: number }[];

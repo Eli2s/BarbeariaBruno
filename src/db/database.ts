@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Client, Service, Plan, Product, PlanPayment, ServiceItem, Order, Barber, BarberItemCommission, Cashback, MessageTemplate } from '@/types';
+import type { Client, Service, Plan, Product, PlanPayment, ServiceItem, Order, Barber, BarberItemCommission, Cashback, MessageTemplate, AppSettings } from '@/types';
 
 class BrunoDatabase extends Dexie {
   clients!: EntityTable<Client, 'id'>;
@@ -13,6 +13,7 @@ class BrunoDatabase extends Dexie {
   barberItemCommissions!: EntityTable<BarberItemCommission, 'id'>;
   cashbacks!: EntityTable<Cashback, 'id'>;
   messageTemplates!: EntityTable<MessageTemplate, 'id'>;
+  settings!: EntityTable<AppSettings, 'key'>;
 
   constructor() {
     super('bruno-barbearia');
@@ -52,6 +53,20 @@ class BrunoDatabase extends Dexie {
       barberItemCommissions: '++id, barberId, itemId, itemType',
       cashbacks: '++id, clientId, status, expirationDate',
       messageTemplates: '++id, type',
+    });
+    this.version(5).stores({
+      clients: '++id, name, nickname, whatsapp',
+      services: '++id, clientId, date, barberId',
+      plans: '++id, clientId, status, nextCharge',
+      products: '++id, name, category',
+      planPayments: '++id, planId, status, expectedDate',
+      serviceItems: '++id, name',
+      orders: '++id, status, createdAt',
+      barbers: '++id, name, isActive',
+      barberItemCommissions: '++id, barberId, itemId, itemType',
+      cashbacks: '++id, clientId, status, expirationDate',
+      messageTemplates: '++id, type',
+      settings: 'key',
     });
   }
 }

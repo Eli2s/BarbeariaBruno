@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { ArrowLeft, X, Plus, Minus, UserPlus, Gift, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
-import { sendCashbackMessage } from '@/lib/whatsappApi';
+import { sendCashbackMessage, sendServiceConfirmation } from '@/lib/whatsappApi';
 import { phoneMask } from '@/lib/format';
 import type { Cashback } from '@/types';
 
@@ -234,6 +234,28 @@ export default function ServiceFormPage() {
     }
 
     toast.success('Atendimento registrado!');
+
+    // Enviar confirmação WhatsApp (fire-and-forget)
+    const registeredClient = clients.find(c => c.id === clientId);
+    if (registeredClient?.whatsapp) {
+      const savedService = {
+        clientId,
+        date: dateTime,
+        services: selectedServices.map(s => s.name),
+        products: selectedProducts,
+        totalValue: totalValue || 0,
+        paymentMethod,
+        observation,
+        usedPlanCredit: usePlanCredit,
+        barberId: barberIdNum,
+        barberCommission: commission,
+      };
+      const barber = barbers.find(b => b.id === barberIdNum);
+      sendServiceConfirmation(registeredClient, savedService as any, barber?.nickname || barber?.name)
+        .then(ok => { if (ok) toast.success('Confirmação enviada via WhatsApp! 📱'); })
+        .catch(() => {});
+    }
+
     navigate('/');
   };
 

@@ -11,6 +11,7 @@ import { ArrowLeft, CreditCard, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
+import { sendPaymentConfirmation } from '@/lib/whatsappApi';
 
 export default function PlanCheckoutPage() {
   const { planId } = useParams();
@@ -62,6 +63,15 @@ export default function PlanCheckoutPage() {
 
     setProcessing(false);
     setStep('done');
+
+    // Enviar confirmação de pagamento via WhatsApp (fire-and-forget)
+    if (client?.whatsapp) {
+      sendPaymentConfirmation(client, {
+        ...plan,
+        nextCharge: format(addDays(new Date(), days), 'yyyy-MM-dd'),
+      })
+        .catch(() => {});
+    }
   };
 
   if (step === 'done') {

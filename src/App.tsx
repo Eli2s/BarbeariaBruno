@@ -20,6 +20,7 @@ import MessageTemplatesPage from "./pages/MessageTemplatesPage";
 import OrdersPage from "./pages/OrdersPage";
 import StorePage from "./pages/store/StorePage";
 import StoreCheckoutPage from "./pages/store/StoreCheckoutPage";
+import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,7 @@ const App = () => (
           <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
           <Route path="/barbeiros" element={<ProtectedRoute><BarbersPage /></ProtectedRoute>} />
           <Route path="/mensagens" element={<ProtectedRoute><MessageTemplatesPage /></ProtectedRoute>} />
+          <Route path="/whatsapp-config" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
