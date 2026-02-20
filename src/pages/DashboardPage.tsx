@@ -1,89 +1,44 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
+import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db/database';
 import { formatCurrency } from '@/lib/format';
 import { sendCashbackReminder } from '@/lib/whatsappApi';
 import { AppLayout } from '@/components/AppLayout';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Users, CreditCard, DollarSign, UserPlus,
-  BarChart3, Scissors, RefreshCw, TrendingUp,
-  Award, User, GitBranch
+  Users, CreditCard, UserPlus, Scissors,
+  RefreshCw, TrendingUp, Eye, EyeOff,
+  Package, ShoppingBag
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  CartesianGrid, LineChart, Line
+  CartesianGrid, Cell
 } from 'recharts';
 import {
-  format, subMonths, isBefore, parseISO, differenceInDays,
-  startOfMonth, subDays, eachDayOfInterval, isAfter
+  format, differenceInDays,
+  startOfMonth, subDays
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { GlassCard } from '@/components/dashboard/GlassCard';
+import { StatCard } from '@/components/dashboard/StatCard';
 
-type ChartPeriod = 'semanal' | 'mensal' | 'anual';
 type BarberPeriod = 'semanal' | 'mensal' | '30dias';
 
-const highlightedBarberId: number | null = null; // ready for future auth integration
-
-// ── Tooltip components must be defined OUTSIDE the page component
-// so Recharts can correctly attach refs (avoids "Function components cannot be given refs" warning)
-function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-      <p className="text-xs font-semibold mb-1.5">{label}</p>
-      {payload.map((entry: any, i: number) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="font-semibold">{formatCurrency(entry.value)}</span>
-        </div>
-      ))}
-      <div className="border-t border-border mt-1.5 pt-1.5">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="font-semibold">Total:</span>
-          <span className="font-bold text-primary">
-            {formatCurrency(payload.reduce((s: number, p: any) => s + p.value, 0))}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BarberBarTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-      <p className="text-xs font-semibold mb-1">{label}</p>
-      <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
-      <p className="text-[10px] text-muted-foreground">Valor a receber</p>
-    </div>
-  );
-}
-
-function BarberLineTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-      <p className="text-xs font-semibold mb-1">{label}</p>
-      <p className="text-xs text-primary font-bold">{formatCurrency(payload[0].value as number)}</p>
-      <p className="text-[10px] text-muted-foreground">Valor a receber</p>
-    </div>
-  );
-}
+const BARBER_COLORS = [
+  { bar: '#6366f1', bg: 'bg-indigo-500/15', text: 'text-indigo-400', border: 'border-indigo-500/20' },
+  { bar: '#a855f7', bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/20' },
+  { bar: '#ec4899', bg: 'bg-pink-500/15', text: 'text-pink-400', border: 'border-pink-500/20' },
+  { bar: '#f43f5e', bg: 'bg-rose-500/15', text: 'text-rose-400', border: 'border-rose-500/20' },
+  { bar: '#14b8a6', bg: 'bg-teal-500/15', text: 'text-teal-400', border: 'border-teal-500/20' },
+];
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
-  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('mensal');
   const [barberPeriod, setBarberPeriod] = useState<BarberPeriod>('mensal');
-  const [selectedBarber, setSelectedBarber] = useState<number | 'todos'>('todos');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [hideValues, setHideValues] = useState(false);
 
-  // Expire cashbacks and send reminders
+  // ── Expire cashbacks ──
   useEffect(() => {
     const checkCashbacks = async () => {
       const activeCashbacks = await db.cashbacks.where('status').equals('ativo').toArray();
@@ -95,11 +50,9 @@ export default function DashboardPage() {
           continue;
         }
         const daysLeft = differenceInDays(expDate, now);
-        const reminderDays = [15, 10, 5, 3, 1];
-        if (reminderDays.includes(daysLeft)) {
-          const lastReminder = cb.lastReminderSent;
+        if ([15, 10, 5, 3, 1].includes(daysLeft)) {
           const todayStr = format(now, 'yyyy-MM-dd');
-          if (lastReminder !== todayStr) {
+          if (cb.lastReminderSent !== todayStr) {
             const client = await db.clients.get(cb.clientId);
             if (client?.whatsapp) {
               sendCashbackReminder(client.name, cb.percentage, daysLeft, client.whatsapp).catch(() => {});
@@ -112,447 +65,299 @@ export default function DashboardPage() {
     checkCashbacks();
   }, []);
 
-  const clients = useLiveQuery(() => db.clients.toArray(), [refreshKey]) ?? [];
-  const plans = useLiveQuery(() => db.plans.where('status').equals('ativo').toArray(), [refreshKey]) ?? [];
-  const allPlans = useLiveQuery(() => db.plans.toArray(), [refreshKey]) ?? [];
-  const orders = useLiveQuery(() => db.orders.toArray(), [refreshKey]) ?? [];
-  const barbers = useLiveQuery(() => db.barbers.where('isActive').equals(1).toArray(), [refreshKey]) ?? [];
+  // ── Live queries ──
+  const clients  = useLiveQuery(() => db.clients.toArray(), [refreshKey]) ?? [];
+  const plans    = useLiveQuery(() => db.plans.where('status').equals('ativo').toArray(), [refreshKey]) ?? [];
+  const orders   = useLiveQuery(() => db.orders.toArray(), [refreshKey]) ?? [];
+  const barbers  = useLiveQuery(() => db.barbers.toArray().then(bs => bs.filter(b => b.isActive)), [refreshKey]) ?? [];
   const allServices = useLiveQuery(() => db.services.toArray(), [refreshKey]) ?? [];
 
   const now = new Date();
   const thisMonth = format(now, 'yyyy-MM');
+  const cutoffThisMonth = format(startOfMonth(now), 'yyyy-MM-dd');
+
+  // ── Metrics ──
   const newClientsThisMonth = clients.filter(c => c.createdAt.startsWith(thisMonth)).length;
-  const recurringRevenue = plans.reduce((s, p) => s + p.value, 0);
+  const servicesThisMonth   = allServices.filter(s => s.date.slice(0, 10) >= cutoffThisMonth);
+  const totalAtendimentos   = servicesThisMonth.length;
+  const ticketMedio = totalAtendimentos > 0
+    ? servicesThisMonth.reduce((s, sv) => s + sv.totalValue, 0) / totalAtendimentos
+    : 0;
 
-  const orderRevenueThisMonth = orders
-    .filter(o => o.status === 'pago' && o.createdAt.startsWith(thisMonth))
-    .reduce((s, o) => s + o.totalValue, 0);
+  // ── Format helper (respects hide toggle) ──
+  const fmtVal = (val: number) => hideValues ? '•••••' : formatCurrency(val);
 
-  const totalRevenue = recurringRevenue + orderRevenueThisMonth;
-
-  // ─── Chart data ──────────────────────────────────────────────
-  const getChartData = () => {
-    if (chartPeriod === 'semanal') {
-      const days = eachDayOfInterval({ start: subDays(now, 6), end: now });
-      return days.map(day => {
-        const key = format(day, 'yyyy-MM-dd');
-        const label = format(day, 'EEE', { locale: ptBR });
-        const ordersVal = orders
-          .filter(o => o.status === 'pago' && o.createdAt.startsWith(key))
-          .reduce((s, o) => s + o.totalValue, 0);
-        const plansVal = allServices
-          .filter(s => s.date.startsWith(key))
-          .reduce((s, sv) => s + (sv.totalValue ?? 0), 0);
-        return { month: label.charAt(0).toUpperCase() + label.slice(1), planos: plansVal, vendas: ordersVal, total: plansVal + ordersVal };
-      });
-    }
-    const months = chartPeriod === 'anual' ? 12 : 6;
-    return Array.from({ length: months }, (_, i) => {
-      const m = subMonths(now, months - 1 - i);
-      const key = format(m, 'yyyy-MM');
-      const label = format(m, 'MMM', { locale: ptBR });
-      const activePlansInMonth = allPlans.filter(p => {
-        const start = parseISO(p.startDate);
-        return isBefore(start, m) && p.status !== 'cancelado';
-      });
-      const plansVal = activePlansInMonth.reduce((s, p) => s + p.value, 0);
-      const ordersVal = orders
-        .filter(o => o.status === 'pago' && o.createdAt.startsWith(key))
-        .reduce((s, o) => s + o.totalValue, 0);
-      return {
-        month: label.charAt(0).toUpperCase() + label.slice(1),
-        planos: plansVal,
-        vendas: ordersVal,
-        total: plansVal + ordersVal,
-      };
-    });
-  };
-
-  const chartData = getChartData();
-
-  // ─── Barber period cutoff ────────────────────────────────────
+  // ── Barber period filter ──
   const getBarberCutoff = (period: BarberPeriod) => {
-    if (period === 'mensal') return format(startOfMonth(now), 'yyyy-MM-dd');
-    if (period === '30dias') return format(subDays(now, 30), 'yyyy-MM-dd');
+    if (period === 'mensal')  return format(startOfMonth(now), 'yyyy-MM-dd');
+    if (period === '30dias')  return format(subDays(now, 30),  'yyyy-MM-dd');
     return format(subDays(now, 7), 'yyyy-MM-dd');
   };
 
-  const getBarberStats = (barberId: number, period: BarberPeriod = barberPeriod) => {
-    const cutoff = getBarberCutoff(period);
-    const filtered = allServices.filter(s => s.barberId === barberId && s.date.slice(0, 10) >= cutoff);
-    return {
-      commission: filtered.reduce((s, sv) => s + (sv.barberCommission ?? 0), 0),
-      count: filtered.length,
-    };
+  const barberCutoff          = getBarberCutoff(barberPeriod);
+  const servicesInBarberPeriod = allServices.filter(s => s.date.slice(0, 10) >= barberCutoff);
+
+  // ── Barber data: Atendimentos + Valor a Receber (comissão) ──
+  const barberDataMap = new Map<number, {
+    name: string;
+    count: number;
+    commission: number;
+    revenue: number;
+  }>();
+
+  barbers.forEach(b => barberDataMap.set(b.id!, {
+    name: b.nickname || b.name,
+    count: 0,
+    commission: 0,
+    revenue: 0,
+  }));
+
+  servicesInBarberPeriod.forEach((s) => {
+    const bid = s.barberId;
+    if (bid && barberDataMap.has(bid)) {
+      const entry = barberDataMap.get(bid)!;
+      entry.count    += 1;
+      entry.commission += s.barberCommission ?? 0;
+      entry.revenue  += s.totalValue ?? 0;
+    }
+  });
+
+  const barberDataArray = Array.from(barberDataMap.entries())
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // Chart data for barber revenue chart
+  const barberChartData  = barberDataArray.map(b => ({ name: b.name, revenue: b.revenue, count: b.count }));
+  const barberChartTotal = barberDataArray.reduce((s, d) => s + d.revenue, 0);
+
+  // ── Product sales this month ──
+  const productSalesMap = new Map<string, { name: string; qty: number; total: number }>();
+  servicesThisMonth.forEach(s => {
+    s.products?.forEach(p => {
+      const existing = productSalesMap.get(p.name) ?? { name: p.name, qty: 0, total: 0 };
+      existing.qty   += p.quantity;
+      existing.total += p.unitPrice * p.quantity;
+      productSalesMap.set(p.name, existing);
+    });
+  });
+  orders.filter(o => o.status === 'pago' && o.createdAt.startsWith(thisMonth)).forEach(o => {
+    o.items?.forEach(item => {
+      const existing = productSalesMap.get(item.name) ?? { name: item.name, qty: 0, total: 0 };
+      existing.qty   += item.quantity;
+      existing.total += item.unitPrice * item.quantity;
+      productSalesMap.set(item.name, existing);
+    });
+  });
+
+  const topProducts        = Array.from(productSalesMap.values()).sort((a, b) => b.total - a.total).slice(0, 4);
+  const productTotalRevenue = topProducts.reduce((s, p) => s + p.total, 0);
+
+  // ── Tooltip ──
+  const ChartTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-2xl">
+        <p className="text-sm font-bold text-white">{d.name}</p>
+        <p className="text-xs text-gray-400 mt-1">
+          <span className="text-white font-semibold">{hideValues ? '•••••' : formatCurrency(d.revenue)}</span> • {d.count} atendimentos
+        </p>
+      </div>
+    );
   };
-
-  // ─── Top barbeiro ────────────────────────────────────────────
-  const topBarber = barbers.reduce<{ name: string; commission: number } | null>((top, b) => {
-    const stats = getBarberStats(b.id!, barberPeriod);
-    if (!top || stats.commission > top.commission) return { name: b.nickname || b.name, commission: stats.commission };
-    return top;
-  }, null);
-
-  // ─── Ticket médio ────────────────────────────────────────────
-  const cutoffThisMonth = format(startOfMonth(now), 'yyyy-MM-dd');
-  const servicesThisMonth = allServices.filter(s => s.date.slice(0, 10) >= cutoffThisMonth);
-  const ticketMedio = servicesThisMonth.length > 0
-    ? totalRevenue / servicesThisMonth.length
-    : 0;
-
-  // ─── Totals across barbers ───────────────────────────────────
-  const barberTotals = barbers.reduce(
-    (acc, b) => {
-      const s = getBarberStats(b.id!);
-      return { commission: acc.commission + s.commission, count: acc.count + s.count };
-    },
-    { commission: 0, count: 0 }
-  );
-
-  // ─── Barber chart data ───────────────────────────────────────
-  const getBarberChartData = () => {
-    const cutoff = getBarberCutoff(barberPeriod);
-    if (selectedBarber === 'todos') {
-      return barbers.map(b => {
-        const stats = getBarberStats(b.id!);
-        return { name: b.nickname || b.name, valor: stats.commission };
-      });
-    }
-    // individual barber
-    if (barberPeriod === 'semanal') {
-      const days = eachDayOfInterval({ start: subDays(now, 6), end: now });
-      return days.map(day => {
-        const key = format(day, 'yyyy-MM-dd');
-        const label = format(day, 'EEE', { locale: ptBR });
-        const valor = allServices
-          .filter(s => s.barberId === selectedBarber && s.date.startsWith(key))
-          .reduce((s, sv) => s + (sv.barberCommission ?? 0), 0);
-        return { label: label.charAt(0).toUpperCase() + label.slice(1), valor };
-      });
-    }
-    // mensal or 30dias — by week chunks
-    const days = barberPeriod === '30dias' ? 30 : 180;
-    const weeks: { label: string; valor: number }[] = [];
-    const totalWeeks = Math.ceil(days / 7);
-    for (let i = totalWeeks - 1; i >= 0; i--) {
-      const weekEnd = subDays(now, i * 7);
-      const weekStart = subDays(now, i * 7 + 6);
-      const startKey = format(weekStart, 'yyyy-MM-dd');
-      const endKey = format(weekEnd, 'yyyy-MM-dd');
-      const label = format(weekEnd, 'dd/MM');
-      const valor = allServices
-        .filter(s => s.barberId === selectedBarber && s.date.slice(0, 10) >= startKey && s.date.slice(0, 10) <= endKey)
-        .reduce((s, sv) => s + (sv.barberCommission ?? 0), 0);
-      weeks.push({ label, valor });
-    }
-    return weeks;
-  };
-
-  const barberChartData = getBarberChartData();
-  const selectedBarberName = selectedBarber === 'todos'
-    ? 'Todos'
-    : (barbers.find(b => b.id === selectedBarber)?.nickname || barbers.find(b => b.id === selectedBarber)?.name || '');
-  const barberChartEmpty = barberChartData.every(d => d.valor === 0);
-
-  const metrics = [
-    { label: 'Total Clientes', value: clients.length, icon: Users, path: '/clientes', color: 'from-blue-500 to-blue-600' },
-    { label: 'Planos Ativos', value: plans.length, icon: CreditCard, path: '/planos', color: 'from-violet-500 to-purple-600' },
-    { label: 'Receita Mensal', value: formatCurrency(totalRevenue), icon: DollarSign, path: '/planos', color: 'from-emerald-500 to-green-600' },
-    { label: 'Novos este mês', value: newClientsThisMonth, icon: UserPlus, path: '/clientes', color: 'from-orange-500 to-red-500' },
-  ];
-
-  const periodLabel = {
-    semanal: 'Últimos 7 dias',
-    mensal: 'Este mês',
-    '30dias': 'Últimos 30 dias',
-  }[barberPeriod];
 
   return (
     <AppLayout>
-      <div className="p-4 max-w-lg md:max-w-full mx-auto space-y-5">
-        {/* Header mobile */}
-        <div className="flex items-center justify-between pt-2 md:hidden">
+      <div className="min-h-screen bg-[hsl(240,15%,4%)] text-white p-4 md:p-6 space-y-5">
+
+        {/* ════ Header ════ */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold gradient-text">Bruno Barbearia</h1>
-            <p className="text-xs text-muted-foreground">Painel de controle</p>
+            <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400">
+              Bruno Barbearia
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">Painel de controle</p>
           </div>
-          <Button size="sm" onClick={() => navigate('/atendimento')} className="font-semibold">
-            + Atendimento
-          </Button>
-        </div>
-
-        {/* ── Metric Cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {metrics.map(m => (
-            <Card
-              key={m.label}
-              className="cursor-pointer hover:shadow-lg hover:shadow-primary/10 hover:scale-[1.02] transition-all border-0 overflow-hidden rounded-xl shadow-md"
-              onClick={() => navigate(m.path)}
+          <div className="flex gap-2 items-center">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10"
+              onClick={() => setHideValues(v => !v)}
+              title={hideValues ? 'Mostrar valores' : 'Ocultar valores'}
             >
-              <CardContent className="p-4 relative">
-                <div className={`absolute inset-0 bg-gradient-to-br ${m.color} opacity-[0.08]`}></div>
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${m.color} flex items-center justify-center shadow-sm`}>
-                      <m.icon size={15} className="text-white" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold">{m.value}</p>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+              {hideValues ? <EyeOff size={14} /> : <Eye size={14} />}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={() => setRefreshKey(k => k + 1)}>
+              <RefreshCw size={14} />
+            </Button>
+          </div>
         </div>
 
-        {/* ── Cards secundários: Ticket Médio + Top Barbeiro ── */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="rounded-xl shadow-md border-0 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-yellow-500 opacity-[0.08]"></div>
-              <div className="relative">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-sm mb-2">
-                  <TrendingUp size={15} className="text-white" />
-                </div>
-                <p className="text-xl font-bold">{formatCurrency(ticketMedio)}</p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Ticket Médio</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-xl shadow-md border-0 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-rose-500 to-pink-600 opacity-[0.08]"></div>
-              <div className="relative">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shadow-sm mb-2">
-                  <Award size={15} className="text-white" />
-                </div>
-                <p className="text-base font-bold truncate">{topBarber?.name ?? '—'}</p>
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Top Barbeiro</span>
-              </div>
-            </CardContent>
-          </Card>
+        {/* ════ Stat Cards ════ */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatCard title="Ticket Médio"   value={fmtVal(ticketMedio)}       icon={TrendingUp} glowColor="rgba(250,204,21,0.4)"   iconBg="bg-yellow-500/20" />
+          <StatCard title="Atendimentos"   value={totalAtendimentos}          icon={Scissors}   glowColor="rgba(16,185,129,0.4)"   iconBg="bg-emerald-500/20" subtitle="MÊS" />
+          <StatCard title="Planos Ativos"  value={plans.length}               icon={CreditCard} glowColor="rgba(139,92,246,0.4)"   iconBg="bg-violet-500/20" />
+          <StatCard title="Total Clientes" value={clients.length}             icon={Users}      glowColor="rgba(59,130,246,0.4)"   iconBg="bg-blue-500/20" />
+          <StatCard title="Novos este mês" value={newClientsThisMonth}        icon={UserPlus}   glowColor="rgba(251,146,60,0.4)"   iconBg="bg-orange-500/20" />
         </div>
 
-        {/* ── Desempenho por Barbeiro ── */}
-        {barbers.length > 0 && (
-          <Card className="rounded-xl shadow-md">
-            <CardContent className="p-4 space-y-4">
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl gradient-subtle flex items-center justify-center">
-                    <Scissors size={16} className="text-primary" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold">Desempenho por Barbeiro</span>
-                    <p className="text-[10px] text-muted-foreground">{periodLabel}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
-                    <SelectTrigger className="h-8 text-xs w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="mensal">Este mês</SelectItem>
-                      <SelectItem value="30dias">30 dias</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRefreshKey(k => k + 1)}>
-                    <RefreshCw size={14} />
-                  </Button>
-                </div>
+        {/* ════ Revenue by Barber Chart ════ */}
+        <GlassCard className="p-5" glowColor="rgba(99,102,241,0.4)">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-500/20">
+                <Scissors size={18} className="text-indigo-400" />
               </div>
-
-              {/* Cards grid — mobile e desktop */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {barbers.map(barber => {
-                  const stats = getBarberStats(barber.id!);
-                  const isHighlighted = highlightedBarberId === barber.id;
-                  return (
-                    <div
-                      key={barber.id}
-                      className={`rounded-xl border p-4 flex items-center gap-4 transition-all ${
-                        isHighlighted
-                          ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                          : 'border-border bg-card hover:border-primary/30 hover:shadow-sm'
-                      }`}
-                    >
-                      {/* Avatar */}
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden border-2 border-border">
-                        {barber.photo
-                          ? <img src={barber.photo} alt={barber.name} className="w-12 h-12 object-cover" />
-                          : <User size={20} className="text-muted-foreground" />
-                        }
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">{barber.nickname || barber.name}</p>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <div>
-                            <p className="text-xl font-bold leading-none">{stats.count}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">Atendimentos</p>
-                          </div>
-                          <div className="w-px h-8 bg-border"></div>
-                          <div>
-                            <p className="text-xl font-bold leading-none text-primary">{formatCurrency(stats.commission)}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">Valor a receber</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div>
+                <h3 className="text-base font-bold text-white">Faturamento por Barbeiro</h3>
+                <p className="text-[10px] text-gray-500">Receita bruta gerada no período</p>
               </div>
-
-              {/* Linha de totais */}
-              {barbers.length > 1 && (
-                <div className="rounded-xl bg-muted/50 border border-border px-4 py-3 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total equipe</span>
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <p className="text-base font-bold">{barberTotals.count}</p>
-                      <p className="text-[10px] text-muted-foreground">Atendimentos</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-base font-bold text-primary">{formatCurrency(barberTotals.commission)}</p>
-                      <p className="text-[10px] text-muted-foreground">A receber</p>
-                    </div>
-                  </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {!hideValues && barberChartTotal > 0 && (
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
+                  <TrendingUp size={12} className="text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-400">{formatCurrency(barberChartTotal)}</span>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Gráfico por Barbeiro ── */}
-        {barbers.length > 0 && (
-          <Card className="overflow-hidden rounded-xl shadow-md">
-            <CardContent className="p-4 space-y-4">
-              {/* Header */}
-              <div className="flex flex-wrap items-center gap-2 justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                    <GitBranch size={16} className="text-white" />
-                  </div>
-                  <span className="text-sm font-semibold">Valor a Receber por Barbeiro</span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Select value={String(selectedBarber)} onValueChange={v => setSelectedBarber(v === 'todos' ? 'todos' : Number(v))}>
-                    <SelectTrigger className="h-8 text-xs w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os Barbeiros</SelectItem>
-                      {barbers.map(b => (
-                        <SelectItem key={b.id} value={String(b.id)}>{b.nickname || b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
-                    <SelectTrigger className="h-8 text-xs w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="mensal">Este mês</SelectItem>
-                      <SelectItem value="30dias">30 dias</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {barberChartEmpty ? (
-                <div className="h-40 flex items-center justify-center">
-                  <p className="text-sm text-muted-foreground">Nenhum atendimento no período</p>
-                </div>
-              ) : selectedBarber === 'todos' ? (
-                <div className="h-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barberChartData} barCategoryGap="30%">
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
-                      <Tooltip content={<BarberBarTooltip />} cursor={{ fill: 'hsl(var(--primary) / 0.05)' }} />
-                      <Bar dataKey="valor" name="Valor a receber" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-52">
-                  <p className="text-xs text-muted-foreground mb-2">{selectedBarberName} — {periodLabel}</p>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={barberChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={60} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
-                      <Tooltip content={<BarberLineTooltip />} cursor={{ stroke: 'hsl(var(--primary) / 0.2)' }} />
-                      <Line type="monotone" dataKey="valor" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 4, fill: 'hsl(var(--primary))' }} activeDot={{ r: 6 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Gráfico de Faturamento ── */}
-        <Card className="overflow-hidden rounded-xl shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl gradient-primary flex items-center justify-center">
-                  <BarChart3 size={16} className="text-white" />
-                </div>
-                <div>
-                  <span className="text-sm font-semibold">Faturamento</span>
-                  <p className="text-[10px] text-muted-foreground">Receita total</p>
-                </div>
-              </div>
-              <Select value={chartPeriod} onValueChange={(v: ChartPeriod) => setChartPeriod(v)}>
-                <SelectTrigger className="h-8 text-xs w-32">
+              <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
+                <SelectTrigger className="h-7 text-[10px] w-24 bg-white/5 border-white/10 text-gray-300">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="semanal">Semanal</SelectItem>
-                  <SelectItem value="mensal">Mensal (6m)</SelectItem>
-                  <SelectItem value="anual">Anual (12m)</SelectItem>
+                  <SelectItem value="mensal">Este mês</SelectItem>
+                  <SelectItem value="30dias">30 dias</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+          </div>
 
-            <div className="flex items-center gap-4 mb-3">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[hsl(225,85%,55%)]"></span>
-                <span className="text-[10px] text-muted-foreground">Serviços</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[hsl(350,80%,55%)]"></span>
-                <span className="text-[10px] text-muted-foreground">Vendas Loja</span>
-              </div>
-              <div className="ml-auto">
-                <span className="text-xs font-bold text-primary">
-                  {formatCurrency(chartData.reduce((s, d) => s + d.total, 0))}
-                </span>
-              </div>
+          {barberChartData.length === 0 || barberChartData.every(d => d.revenue === 0) ? (
+            <div className="flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
+              <Scissors size={40} className="opacity-20" />
+              <p className="text-sm">Nenhum atendimento com barbeiro neste período</p>
+              <p className="text-xs text-gray-600">Registre atendimentos com barbeiro para ver os dados aqui</p>
             </div>
-
-            <div className="h-48 md:h-64">
+          ) : (
+            <div className="h-52 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barCategoryGap="20%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="hsl(var(--border))" tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={55} tickFormatter={v => `R$${v}`} tickLine={false} axisLine={false} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--primary) / 0.05)' }} />
-                  <Bar dataKey="planos" name="Serviços" fill="hsl(225, 85%, 55%)" radius={[0, 0, 0, 0]} stackId="revenue" />
-                  <Bar dataKey="vendas" name="Vendas" fill="hsl(350, 80%, 55%)" radius={[4, 4, 0, 0]} stackId="revenue" />
+                <BarChart data={barberChartData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    {barberChartData.map((_, index) => (
+                      <linearGradient id={`bGrad-${index}`} x1="0" y1="0" x2="1" y2="0" key={`grad-${index}`}>
+                        <stop offset="0%"   stopColor={BARBER_COLORS[index % BARBER_COLORS.length].bar} stopOpacity={0.15} />
+                        <stop offset="100%" stopColor={BARBER_COLORS[index % BARBER_COLORS.length].bar} stopOpacity={0.9} />
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.04)" />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    tick={{ fill: '#9ca3af', fontSize: 12, fontWeight: 600 }}
+                    width={85}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                  <Bar dataKey="revenue" radius={[0, 8, 8, 0]} barSize={28} animationDuration={1200}>
+                    {barberChartData.map((_, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={`url(#bGrad-${index})`}
+                        stroke={BARBER_COLORS[index % BARBER_COLORS.length].bar}
+                        strokeWidth={1}
+                        strokeOpacity={0.4}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </GlassCard>
+
+        {/* ════ Performance por Barbeiro ════ */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Scissors size={16} className="text-indigo-400" />
+            <h3 className="text-sm font-bold text-white">Performance por Barbeiro</h3>
+            <span className="text-[10px] text-gray-600 ml-auto">
+              {{ semanal: 'Últimos 7 dias', mensal: 'Este mês', '30dias': 'Últimos 30 dias' }[barberPeriod]}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {barberDataArray.map((barber, idx) => {
+              const color = BARBER_COLORS[idx % BARBER_COLORS.length];
+              return (
+                <GlassCard key={barber.id} className="p-4" glowColor={`${color.bar}40`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-10 h-10 rounded-full ${color.bg} border ${color.border} flex items-center justify-center text-xs font-bold ${color.text}`}>
+                      {barber.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">{barber.name}</p>
+                      <p className="text-[10px] text-gray-500">{barber.count} atendimentos</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.04]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">Faturamento</p>
+                      <p className="text-sm font-bold text-white mt-0.5">{fmtVal(barber.revenue)}</p>
+                    </div>
+                    <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.04]">
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">A Receber</p>
+                      <p className={`text-sm font-bold mt-0.5 ${color.text}`}>
+                        {fmtVal(barber.commission)}
+                      </p>
+                    </div>
+                  </div>
+                </GlassCard>
+              );
+            })}
+            {barberDataArray.length === 0 && (
+              <p className="col-span-full text-center text-gray-600 py-6 text-xs">Nenhum barbeiro ativo cadastrado</p>
+            )}
+          </div>
+        </div>
+
+        {/* ════ Vendas de Produtos ════ */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ShoppingBag size={16} className="text-rose-400" />
+            <h3 className="text-sm font-bold text-white">Vendas de Produtos</h3>
+            <span className="text-[10px] text-gray-600 ml-1">este mês</span>
+            {!hideValues && productTotalRevenue > 0 && (
+              <span className="text-xs font-bold text-emerald-400 ml-auto">
+                {formatCurrency(productTotalRevenue)}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {topProducts.length > 0 ? topProducts.map((prod, i) => (
+              <GlassCard key={prod.name} className="p-4" glowColor="rgba(244,63,94,0.2)">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="p-2 rounded-lg bg-rose-500/15">
+                    <Package size={14} className="text-rose-400" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-bold">#{i + 1}</span>
+                </div>
+                <p className="text-xs font-semibold text-white truncate" title={prod.name}>{prod.name}</p>
+                <div className="flex justify-between items-end mt-2">
+                  <span className="text-[10px] text-gray-500">{prod.qty} vendidos</span>
+                  <span className="text-sm font-bold text-white">{fmtVal(prod.total)}</span>
+                </div>
+              </GlassCard>
+            )) : (
+              <p className="col-span-full text-center text-gray-600 py-6 text-xs">Nenhuma venda de produto este mês</p>
+            )}
+          </div>
+        </div>
+
       </div>
     </AppLayout>
   );
