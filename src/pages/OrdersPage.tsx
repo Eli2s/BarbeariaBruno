@@ -6,13 +6,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShoppingBag, Package, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { ShoppingBag, Package, TrendingUp, TrendingDown, AlertTriangle, ShoppingCart, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/format';
 import { format, parseISO, startOfMonth, subDays, subMonths } from 'date-fns';
 
 export default function OrdersPage() {
-  const [ordersPeriod, setOrdersPeriod] = useState<'semanal' | 'mensal'>('mensal');
+  const [ordersPeriod, setOrdersPeriod] = useState<'semanal' | 'mensal' | '30dias'>('mensal');
 
   const orders = useLiveQuery(() => db.orders.reverse().toArray()) ?? [];
   const products = useLiveQuery(() => db.products.toArray()) ?? [];
@@ -36,16 +36,21 @@ export default function OrdersPage() {
 
   // ── Métricas de vendas ──────────────────────────────────────
   const now = new Date();
-  const getCutoff = (period: 'semanal' | 'mensal') =>
-    period === 'semanal'
-      ? format(subDays(now, 7), 'yyyy-MM-dd')
-      : format(startOfMonth(now), 'yyyy-MM-dd');
+  const getCutoff = (period: 'semanal' | 'mensal' | '30dias') => {
+    if (period === 'semanal') return format(subDays(now, 7), 'yyyy-MM-dd');
+    if (period === '30dias') return format(subDays(now, 30), 'yyyy-MM-dd');
+    return format(startOfMonth(now), 'yyyy-MM-dd');
+  };
 
   const prevCutoff = ordersPeriod === 'semanal'
     ? format(subDays(now, 14), 'yyyy-MM-dd')
+    : ordersPeriod === '30dias'
+    ? format(subDays(now, 60), 'yyyy-MM-dd')
     : format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
   const prevEnd = ordersPeriod === 'semanal'
     ? format(subDays(now, 7), 'yyyy-MM-dd')
+    : ordersPeriod === '30dias'
+    ? format(subDays(now, 30), 'yyyy-MM-dd')
     : format(subDays(startOfMonth(now), 1), 'yyyy-MM-dd');
 
   const cutoff = getCutoff(ordersPeriod);
@@ -74,6 +79,14 @@ export default function OrdersPage() {
   // Estoque baixo
   const lowStock = products.filter(p => (p.stock ?? 0) < 5);
 
+  // Card 5: Total itens vendidos
+  const totalItemsSold = periodOrders
+    .flatMap(o => o.items ?? [])
+    .reduce((s: number, item: any) => s + (item.quantity ?? 1), 0);
+
+  // Card 6: Ticket médio por pedido
+  const avgOrderValue = periodOrders.length > 0 ? productRevenue / periodOrders.length : 0;
+
   return (
     <AppLayout>
       <div className="p-4 max-w-lg md:max-w-4xl mx-auto space-y-4">
@@ -86,13 +99,14 @@ export default function OrdersPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resumo de Vendas</p>
-            <Select value={ordersPeriod} onValueChange={(v: 'semanal' | 'mensal') => setOrdersPeriod(v)}>
+            <Select value={ordersPeriod} onValueChange={(v: 'semanal' | 'mensal' | '30dias') => setOrdersPeriod(v)}>
               <SelectTrigger className="h-7 text-xs w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="semanal">Semanal</SelectItem>
                 <SelectItem value="mensal">Este mês</SelectItem>
+                <SelectItem value="30dias">30 dias</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -191,6 +205,40 @@ export default function OrdersPage() {
                     )}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Card 5: Total itens vendidos */}
+            <Card className="rounded-xl shadow-md border-0 overflow-hidden">
+              <CardContent className="p-4 relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 opacity-[0.07]"></div>
+                <div className="relative flex items-start justify-between">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Total Itens Vendidos</p>
+                    <p className="text-2xl font-bold">{totalItemsSold}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">itens no período</p>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0">
+                    <ShoppingCart size={16} className="text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 6: Ticket médio por pedido */}
+            <Card className="rounded-xl shadow-md border-0 overflow-hidden">
+              <CardContent className="p-4 relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 opacity-[0.07]"></div>
+                <div className="relative flex items-start justify-between">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Ticket Médio por Pedido</p>
+                    <p className="text-2xl font-bold">{formatCurrency(avgOrderValue)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">por pedido</p>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shrink-0">
+                    <CreditCard size={16} className="text-white" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
