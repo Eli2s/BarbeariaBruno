@@ -107,10 +107,44 @@ export default function WhatsAppSettingsPage() {
     setConnectingOAuth(true);
     try {
       const { authUrl, state } = await initMetaOAuth();
-      // Save state in sessionStorage for CSRF validation
       sessionStorage.setItem('meta_oauth_state', state);
-      // Redirect to Meta login
-      window.location.href = authUrl;
+
+      // Open Meta login in a popup to avoid iframe blocking
+      const popup = window.open(authUrl, 'meta_oauth', 'width=600,height=700');
+
+      if (!popup) {
+        toast.error('Popup bloqueado', {
+          description: 'Permita popups para este site e tente novamente.',
+        });
+        setConnectingOAuth(false);
+        return;
+      }
+
+      const messageHandler = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== 'oauth-complete') return;
+
+        window.removeEventListener('message', messageHandler);
+        setConnectingOAuth(false);
+
+        if (event.data.success) {
+          toast.success('WhatsApp Business conectado com sucesso!');
+          getOAuthCredentials().then(creds => setOauthCreds(creds));
+        } else {
+          toast.error('Falha ao conectar conta WhatsApp Business.');
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+
+      // Fallback: clean up if popup is closed without completing
+      const pollTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollTimer);
+          window.removeEventListener('message', messageHandler);
+          setConnectingOAuth(false);
+        }
+      }, 1000);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       toast.error('Erro ao iniciar autenticação', { description: message });
