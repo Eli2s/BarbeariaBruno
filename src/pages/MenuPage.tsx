@@ -125,19 +125,7 @@ export default function MenuPage() {
             <MessageSquare size={18} />
             <div>
               <p className="text-sm font-semibold">Mensagens WhatsApp</p>
-              <p className="text-xs text-muted-foreground">Editar templates de mensagens</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:bg-secondary/50 transition-colors border-green-500/20" onClick={() => navigate('/whatsapp-config')}>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-green-500/15 flex items-center justify-center shrink-0">
-              <Smartphone size={16} className="text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold">WhatsApp Automático</p>
-              <p className="text-xs text-muted-foreground">Configurar envio via Meta Cloud API</p>
+              <p className="text-xs text-muted-foreground">Editar templates, histórico e configurações</p>
             </div>
           </CardContent>
         </Card>

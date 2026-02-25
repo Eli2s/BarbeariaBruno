@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ArrowLeft, MessageSquare, Save, CheckCircle, Clock,
   Send, MessageCircle, Bell, Gift, Scissors, CreditCard,
+  Settings,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -129,15 +130,26 @@ export default function MessageTemplatesPage() {
   return (
     <AppLayout>
       <div className="p-4 max-w-lg md:max-w-4xl mx-auto space-y-4">
-        <div className="flex items-center gap-3 pt-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft size={20} /></Button>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <MessageCircle size={20} className="text-primary" />
-              Mensagens
-            </h1>
-            <p className="text-xs text-muted-foreground">Templates, automações e histórico</p>
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft size={20} /></Button>
+            <div>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <MessageCircle size={20} className="text-primary" />
+                Mensagens
+              </h1>
+              <p className="text-xs text-muted-foreground">Templates, automações e histórico</p>
+            </div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 text-xs border-primary/30 text-primary hover:bg-primary/5"
+            onClick={() => navigate('/whatsapp-config')}
+          >
+            <Settings size={14} />
+            Configurar WhatsApp
+          </Button>
         </div>
 
         <Tabs defaultValue="templates" className="w-full">
