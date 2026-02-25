@@ -1,73 +1,73 @@
-# Welcome to your Lovable project
+# Bruno Online - Sistema para Barbearia 💈
 
-## Project info
+Sistema web feito para ajudar na gestão de uma barbearia. Com ele é possível controlar clientes, agendamentos, barbeiros, produtos e muito mais, tudo pelo celular ou computador.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Sobre o projeto
 
-## How can I edit this code?
+O **Bruno Online** é um sistema completo (PWA) voltado para barbeiros autônomos que precisam de uma forma simples de organizar o dia a dia do negócio. O foco principal é facilitar o controle de atendimentos, comissões dos barbeiros e a venda de produtos pela loja online.
 
-There are several ways of editing your application.
+### O que dá pra fazer
 
-**Use Lovable**
+- **Dashboard** - Visão geral com faturamento, atendimentos do dia e gráficos
+- **Clientes** - Cadastro e histórico completo de cada cliente
+- **Barbeiros** - Gerenciamento dos barbeiros e suas comissões
+- **Atendimentos** - Registro de serviços realizados com data, horário e valor
+- **Produtos** - Cadastro de produtos para venda na loja
+- **Loja Online** - Página pública para os clientes verem e comprarem produtos
+- **Planos/Assinaturas** - Criação de planos recorrentes para clientes
+- **Pedidos** - Controle dos pedidos feitos pela loja
+- **WhatsApp** - Integração com WhatsApp para envio de mensagens e lembretes
+- **Configurações** - Personalização geral do sistema
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Tecnologias utilizadas
 
-Changes made via Lovable will be committed automatically to this repo.
+- **React** - Biblioteca para construção da interface
+- **TypeScript** - JavaScript com tipagem para menos erros
+- **Vite** - Ferramenta de build rápida para desenvolvimento
+- **Tailwind CSS** - Framework CSS para estilização
+- **shadcn/ui** - Componentes de interface prontos e bonitos
+- **React Query** - Gerenciamento de dados vindos da API
+- **React Router** - Navegação entre as páginas
+- **Zustand** - Gerenciamento de estado global
+- **Recharts** - Gráficos do dashboard
+- **Lucide React** - Ícones
 
-**Use your preferred IDE**
+## Como rodar o projeto
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Você precisa ter o **Node.js** instalado na sua máquina.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+# 1. Clone o repositório
+git clone <URL_DO_REPO>
 
-Follow these steps:
+# 2. Entre na pasta do projeto
+cd WEB
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# 3. Instale as dependências
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 4. Rode o projeto
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+O projeto vai abrir no navegador em `http://localhost:5173`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Estrutura de pastas
 
-**Use GitHub Codespaces**
+```
+src/
+├── api/          # Chamadas para a API do backend
+├── components/   # Componentes reutilizáveis (botões, cards, inputs...)
+├── hooks/        # Hooks customizados (useClients, useProducts, etc.)
+├── lib/          # Funções utilitárias
+├── pages/        # Páginas da aplicação
+│   └── store/    # Páginas da loja pública
+├── stores/       # Estado global (Zustand)
+└── types/        # Tipagens TypeScript
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Observações
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- O frontend se conecta a uma API backend separada (pasta `API/`)
+- O sistema usa tema escuro por padrão
+- É um PWA, então pode ser instalado no celular como um app
