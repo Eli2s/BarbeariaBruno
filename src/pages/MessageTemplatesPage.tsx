@@ -1,296 +1,411 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft, MessageSquare, Save, CheckCircle, Clock,
   Send, MessageCircle, Bell, Gift, Scissors, CreditCard,
-  Settings,
+  Settings, Wifi, Info, Link, Unlink, RefreshCw, Loader2,
+  ShieldCheck, XCircle, Eye, EyeOff, ChevronDown, ChevronUp,
+  ExternalLink, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import type { MessageTemplate } from '@/types';
+import { format, differenceInDays, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import type { MessageTemplate, WhatsAppConfig } from '@/types';
 
+// Hooks & API
 import {
   useMessageTemplates,
-  useCreateMessageTemplatesBulk,
   useUpdateMessageTemplate,
 } from '@/hooks/useMessageTemplates';
 import { useServices } from '@/hooks/useServices';
 import { useClients } from '@/hooks/useClients';
+import { getWhatsAppConfig, saveWhatsAppConfig, sendWhatsAppMessage } from '@/lib/whatsappApi';
+import {
+  initMetaOAuth,
+  getOAuthCredentials,
+  disconnectOAuth,
+  refreshOAuthToken,
+  type OAuthCredentials,
+} from '@/lib/whatsappOAuth';
+import { phoneMask } from '@/lib/format';
 
-// ── Default templates ─────────────────────────────────────────────────
-const DEFAULT_TEMPLATES: Omit<MessageTemplate, 'id'>[] = [
-  {
-    type: 'cashback_activated',
-    name: 'Cashback Ativado',
-    content: 'Obrigado pela visita, {nome}! 🎉\n\nVocê ganhou *{percentual}% de desconto* no próximo serviço, válido até {data_expiracao}.\n\nVolte logo! 💈✂️',
-  },
-  {
-    type: 'cashback_reminder',
-    name: 'Lembrete de Cashback',
-    content: 'Oi {nome}! 👋\n\nFaltam apenas *{dias_restantes} dias* para seu cashback de *{percentual}%* expirar!\n\nAgende seu próximo corte e aproveite o desconto. 💈',
-  },
-  {
-    type: 'thank_you',
-    name: 'Agradecimento',
-    content: 'Obrigado pela preferência, {nome}! 🙏\n\nFoi um prazer atendê-lo. Até a próxima! ✂️💈',
-  },
-];
+const EMPTY_CONFIG: WhatsAppConfig = {
+  phoneNumberId: '',
+  accessToken: '',
+  businessPhone: '',
+  shopName: '',
+  enabled: false,
+};
 
-// ── Automated message types ───────────────────────────────────────────
-const AUTO_MESSAGES = [
-  {
-    icon: Scissors,
-    label: '✂️ Confirmação de atendimento',
-    desc: 'Enviada automaticamente ao registrar um novo atendimento',
-    color: 'text-blue-500',
-  },
-  {
-    icon: CreditCard,
-    label: '✅ Confirmação de pagamento',
-    desc: 'Enviada ao confirmar pagamento de plano',
-    color: 'text-green-500',
-  },
-  {
-    icon: Gift,
-    label: '🎁 Cashback ativado',
-    desc: 'Enviada ao ativar cashback para o cliente',
-    color: 'text-purple-500',
-  },
-  {
-    icon: Bell,
-    label: '⏰ Lembrete de cashback',
-    desc: 'Enviada quando cashback está próximo de expirar',
-    color: 'text-amber-500',
-  },
-];
+type ConnectionMode = 'oauth' | 'manual';
 
 export default function MessageTemplatesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Tabs state
+  const [activeTab, setActiveTab] = useState('automations');
+
+  // Templates state
   const { data: templates = [] } = useMessageTemplates();
-  const createBulkMutation = useCreateMessageTemplatesBulk();
   const updateMutation = useUpdateMessageTemplate();
   const [editValues, setEditValues] = useState<Record<string, string>>({});
 
-  // Data for history
+  // WhatsApp Config state
+  const [oauthCreds, setOauthCreds] = useState<OAuthCredentials | null>(null);
+  const [loadingOAuth, setLoadingOAuth] = useState(true);
+  const [connectingOAuth, setConnectingOAuth] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
+  const [config, setConfig] = useState<WhatsAppConfig>(EMPTY_CONFIG);
+  const [showToken, setShowToken] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; errorCode?: number } | null>(null);
+  const [mode, setMode] = useState<ConnectionMode>('oauth');
+
+  // History data
   const { data: services = [] } = useServices();
   const { data: clients = [] } = useClients();
 
-  // Seed default templates if none exist
-  useEffect(() => {
-    if (templates.length === 0) {
-      createBulkMutation.mutateAsync(DEFAULT_TEMPLATES).catch(() => {});
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templates.length]);
-
+  // ── Load Data ──────────────────────────────────────────────────────
   useEffect(() => {
     const map: Record<string, string> = {};
     templates.forEach(t => { map[t.type] = t.content; });
     setEditValues(map);
   }, [templates]);
 
-  const handleSave = async (template: MessageTemplate) => {
+  useEffect(() => {
+    setLoadingOAuth(true);
+    getOAuthCredentials()
+      .then(creds => setOauthCreds(creds))
+      .catch(() => setOauthCreds({ connected: false }))
+      .finally(() => setLoadingOAuth(false));
+
+    getWhatsAppConfig().then(cfg => {
+      if (cfg) setConfig(cfg);
+    });
+  }, []);
+
+  // ── Handlers (Templates) ───────────────────────────────────────────
+  const handleSaveTemplate = async (template: MessageTemplate) => {
     const newContent = editValues[template.type];
     if (newContent !== undefined) {
       try {
         await updateMutation.mutateAsync({ id: template.id!, content: newContent });
-        toast.success(`Template "${template.name}" salvo!`);
+        toast.success(`Template "${template.name}" atualizado!`);
       } catch {
         toast.error('Erro ao salvar template');
       }
     }
   };
 
-  const variables = ['{nome}', '{percentual}', '{data_expiracao}', '{dias_restantes}', '{barbearia}'];
+  // ── Handlers (WhatsApp Config) ──────────────────────────────────────
+  const handleConnectOAuth = async () => {
+    setConnectingOAuth(true);
+    try {
+      const { authUrl, state } = await initMetaOAuth();
+      sessionStorage.setItem('meta_oauth_state', state);
+      const popup = window.open(authUrl, 'meta_oauth', 'width=600,height=700');
+      if (!popup) {
+        toast.error('Popup bloqueado. Permita popups e tente novamente.');
+        setConnectingOAuth(false);
+        return;
+      }
+      const messageHandler = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== 'oauth-complete') return;
+        window.removeEventListener('message', messageHandler);
+        setConnectingOAuth(false);
+        if (event.data.success) {
+          toast.success('WhatsApp Business conectado com sucesso!');
+          getOAuthCredentials().then(creds => setOauthCreds(creds));
+        } else {
+          toast.error('Falha ao conectar conta WhatsApp Business.');
+        }
+      };
+      window.addEventListener('message', messageHandler);
+    } catch (err: any) {
+      toast.error('Erro ao iniciar autenticação', { description: err.message });
+      setConnectingOAuth(false);
+    }
+  };
 
-  // Build simple message history from services (approximation)
+  const handleDisconnect = async () => {
+    if (!confirm('Desconectar conta WhatsApp Business?')) return;
+    setDisconnecting(true);
+    try {
+      await disconnectOAuth();
+      setOauthCreds({ connected: false });
+      toast.success('Conta desconectada.');
+    } catch (err: any) {
+      toast.error('Erro ao desconectar', { description: err.message });
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      await saveWhatsAppConfig(config);
+      toast.success('Configurações salvas!');
+    } catch {
+      toast.error('Erro ao salvar configurações.');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const handleTest = async () => {
+    const testPhone = oauthCreds?.connected ? oauthCreds.displayPhoneNumber : config.businessPhone;
+    if (!testPhone?.trim()) { toast.error('Número não disponível.'); return; }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await sendWhatsAppMessage(testPhone, '✅ Teste de conexão — sistema pronto!');
+      setTestResult({
+        success: result.success,
+        message: result.success ? 'Mensagem enviada!' : (result.errorMessage || 'Falha no envio.'),
+        errorCode: result.errorCode,
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const isOAuthConnected = oauthCreds?.connected === true;
+  const tokenDaysLeft = oauthCreds?.tokenExpiresAt ? differenceInDays(parseISO(oauthCreds.tokenExpiresAt), new Date()) : null;
+
+  // ── Derived Data ────────────────────────────────────────────────────
+  const variables = ['{nome}', '{percentual}', '{data_expiracao}', '{dias_restantes}', '{barbearia}'];
+  
+  const AUTO_MESSAGES = [
+    { type: 'thank_you', icon: Scissors, label: '✂️ Confirmação de atendimento', desc: 'Enviada ao registrar novo atendimento', color: 'text-blue-500' },
+    { type: 'payment', icon: CreditCard, label: '✅ Confirmação de pagamento', desc: 'Enviada ao confirmar pagamento de plano', color: 'text-green-500' },
+    { type: 'cashback_activated', icon: Gift, label: '🎁 Cashback ativado', desc: 'Enviada ao ativar cashback para o cliente', color: 'text-purple-500' },
+    { type: 'cashback_reminder', icon: Bell, label: '⏰ Lembrete de cashback', desc: 'Enviada quando cashback está próximo de expirar', color: 'text-amber-500' },
+  ];
+
   const messageHistory = services
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 30)
+    .slice(0, 15)
     .map(svc => {
       const client = clients.find(c => c.id === svc.clientId);
       return {
         id: svc.id,
         clientName: client?.nickname || client?.name || 'Cliente',
-        clientWhatsapp: client?.whatsapp || '',
-        type: 'Confirmação de atendimento',
+        type: 'Atendimento',
         date: svc.date,
-        icon: Scissors,
       };
     });
 
   return (
     <AppLayout>
       <div className="p-4 max-w-lg md:max-w-4xl mx-auto space-y-4">
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft size={20} /></Button>
-            <div>
-              <h1 className="text-xl font-bold flex items-center gap-2">
-                <MessageCircle size={20} className="text-primary" />
-                Mensagens
-              </h1>
-              <p className="text-xs text-muted-foreground">Templates, automações e histórico</p>
-            </div>
+        <div className="flex items-center gap-3 pt-2">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft size={20} /></Button>
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <MessageCircle size={20} className="text-primary" />
+              Central de Mensagens
+            </h1>
+            <p className="text-xs text-muted-foreground">Automações e Conexão WhatsApp</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 text-xs border-primary/30 text-primary hover:bg-primary/5"
-            onClick={() => navigate('/whatsapp-config')}
-          >
-            <Settings size={14} />
-            Configurar WhatsApp
-          </Button>
         </div>
 
-        <Tabs defaultValue="templates" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="templates" className="gap-1.5 text-xs">
-              <MessageSquare size={13} /> Templates
-            </TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="automations" className="gap-1.5 text-xs">
               <Send size={13} /> Automáticas
             </TabsTrigger>
-            <TabsTrigger value="history" className="gap-1.5 text-xs">
-              <Clock size={13} /> Histórico
+            <TabsTrigger value="settings" className="gap-1.5 text-xs">
+              <Settings size={13} /> Configurações
             </TabsTrigger>
           </TabsList>
 
-          {/* ── TAB: Templates ──────────────────────────────────────── */}
-          <TabsContent value="templates" className="space-y-4 mt-4">
-            <Card className="bg-secondary/30">
-              <CardContent className="p-3">
-                <p className="text-xs font-medium mb-1.5">Variáveis disponíveis:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {variables.map(v => (
-                    <Badge key={v} variant="outline" className="text-[10px] font-mono">{v}</Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {templates.map(t => (
-              <Card key={t.id}>
-                <CardContent className="p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare size={16} className="text-primary" />
-                    <Label className="text-sm font-semibold">{t.name}</Label>
-                    <Badge variant="outline" className="text-[10px] ml-auto">{t.type}</Badge>
-                  </div>
-                  <Textarea
-                    rows={5}
-                    value={editValues[t.type] ?? t.content}
-                    onChange={e => setEditValues({ ...editValues, [t.type]: e.target.value })}
-                    className="text-xs"
-                  />
-                  <Button size="sm" className="gap-1.5" onClick={() => handleSave(t)}>
-                    <Save size={12} /> Salvar
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
-
-          {/* ── TAB: Mensagens Automáticas ──────────────────────────── */}
+          {/* ── TAB: AUTOMATICAS ────────────────────────────────────── */}
           <TabsContent value="automations" className="space-y-4 mt-4">
-            <Card>
-              <CardContent className="p-4 space-y-3">
-                <h2 className="text-sm font-semibold flex items-center gap-2">
-                  <Send size={14} className="text-primary" />
-                  Mensagens automáticas configuradas
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Estas mensagens são enviadas automaticamente via WhatsApp quando determinadas ações ocorrem no sistema.
-                </p>
-                <div className="space-y-2">
-                  {AUTO_MESSAGES.map(item => (
-                    <div key={item.label} className="flex items-start gap-3 p-3 rounded-lg bg-secondary/30 border border-border/50">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <item.icon size={14} className={item.color} />
+            <div className="space-y-3">
+              {AUTO_MESSAGES.map(item => {
+                const template = templates.find(t => t.type === item.type);
+                return (
+                  <Card key={item.type} className="overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="p-4 flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <item.icon size={18} className={item.color} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold">{item.label}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <CheckCircle size={14} className={config.enabled ? "text-green-500" : "text-muted-foreground"} />
+                          <span className={`text-[10px] font-medium ${config.enabled ? "text-green-600" : "text-muted-foreground"}`}>
+                            {config.enabled ? "Ativa" : "Inativa"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold">{item.label}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <CheckCircle size={14} className="text-green-500" />
-                        <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Ativa</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      
+                      {template && (
+                        <div className="px-4 pb-4 space-y-3 border-t pt-3 bg-secondary/10">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Conteúdo da mensagem</Label>
+                            <div className="flex gap-1">
+                              {variables.slice(0, 3).map(v => (
+                                <Badge key={v} variant="outline" className="text-[9px] font-mono py-0 h-4">{v}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                          <Textarea 
+                            className="text-xs min-h-[80px] bg-background"
+                            value={editValues[template.type] ?? template.content}
+                            onChange={e => setEditValues({ ...editValues, [template.type]: e.target.value })}
+                          />
+                          <Button variant="outline" className="h-7 text-[10px] gap-1 px-3 ml-auto flex" onClick={() => handleSaveTemplate(template)}>
+                            <Save size={12} /> Salvar texto
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
 
-            <Card className="border-primary/20">
-              <CardContent className="p-4 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Para configurar a conexão com o WhatsApp (Meta Cloud API), acesse as{' '}
-                  <button
-                    type="button"
-                    className="text-primary underline font-medium"
-                    onClick={() => navigate('/whatsapp-config')}
-                  >
-                    Configurações do WhatsApp
-                  </button>.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB: Histórico ─────────────────────────────────────── */}
-          <TabsContent value="history" className="space-y-4 mt-4">
-            <Card>
-              <CardContent className="p-4 space-y-3">
-                <h2 className="text-sm font-semibold flex items-center gap-2">
-                  <Clock size={14} className="text-primary" />
-                  Histórico de mensagens enviadas
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Últimas mensagens enviadas automaticamente aos clientes (com base nos atendimentos registrados).
-                </p>
-
+            {/* Simple history inside the Automations tab to keep things centralized */}
+            <Card className="border-dashed border-muted">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-xs font-semibold flex items-center gap-2">
+                  <Clock size={13} /> Últimas enviadas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 pt-0">
                 {messageHistory.length > 0 ? (
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  <div className="space-y-2">
                     {messageHistory.map(msg => (
-                      <div key={msg.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 border border-border/50">
-                        <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                          <msg.icon size={14} className="text-blue-500" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{msg.clientName}</p>
-                          <p className="text-[10px] text-muted-foreground">{msg.type}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-[10px] text-muted-foreground">
-                            {format(new Date(msg.date), 'dd/MM/yy')}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {format(new Date(msg.date), 'HH:mm')}
-                          </p>
-                        </div>
-                        <CheckCircle size={12} className="text-green-500 shrink-0" />
+                      <div key={msg.id} className="flex items-center justify-between text-[10px] p-1.5 rounded bg-secondary/20">
+                        <span className="font-medium">{msg.clientName}</span>
+                        <span className="text-muted-foreground">{format(new Date(msg.date), 'dd/MM HH:mm')}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <MessageSquare size={24} className="mx-auto text-muted-foreground/30 mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhuma mensagem enviada ainda</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      As mensagens aparecerão aqui após registrar atendimentos
-                    </p>
-                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center py-2">Nenhuma mensagem recente.</p>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── TAB: CONFIGURAÇÕES (from WhatsAppSettingsPage) ──────── */}
+          <TabsContent value="settings" className="space-y-4 mt-4 pb-10">
+            {/* Meta OAuth Card */}
+            <Card className={isOAuthConnected ? 'border-green-500/40 bg-green-500/5' : ''}>
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-primary" />
+                    Conectar via Meta
+                  </h3>
+                  {isOAuthConnected && <Badge className="bg-green-500 text-white border-0 text-[9px]">Conectado</Badge>}
+                </div>
+
+                {loadingOAuth ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Verificando...</div>
+                ) : isOAuthConnected ? (
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <p className="text-xs font-medium text-green-700 dark:text-green-400">{oauthCreds?.displayPhoneNumber}</p>
+                      <p className="text-[10px] text-muted-foreground">WABA ID: {oauthCreds?.wabaId}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full h-8 text-xs text-destructive gap-1.5" onClick={handleDisconnect} disabled={disconnecting}>
+                      <Unlink size={14} /> Desconectar conta
+                    </Button>
+                  </div>
+                ) : (
+                  <Button className="w-full h-9 gap-2 text-xs" onClick={handleConnectOAuth} disabled={connectingOAuth}>
+                    <Link size={14} /> {connectingOAuth ? 'Abrindo Meta...' : 'Conectar com Facebook'}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Shop settings */}
+            <Card>
+              <CardContent className="p-4 space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Nome da Barbearia (nas mensagens)</Label>
+                  <Input className="h-9 text-xs" value={config.shopName} onChange={e => setConfig({...config, shopName: e.target.value})} placeholder="Bruno Barbearia" />
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30">
+                  <div>
+                    <Label className="text-xs font-semibold">Envio Automático</Label>
+                    <p className="text-[10px] text-muted-foreground">Ativar/Desativar todas as mensagens</p>
+                  </div>
+                  <Switch checked={config.enabled} onCheckedChange={v => setConfig({...config, enabled: v})} />
+                </div>
+                <Button className="w-full h-9 gap-2 text-xs" onClick={handleSaveConfig} disabled={savingConfig}>
+                  <Save size={14} /> {savingConfig ? 'Salvando...' : 'Salvar Configurações'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Manual Toggle */}
+            <div className="text-center">
+              <Button variant="ghost" size="sm" className="text-[10px] text-muted-foreground" onClick={() => setMode(m => m === 'manual' ? 'oauth' : 'manual')}>
+                {mode === 'manual' ? "Ocultar configuração manual" : "Configuração manual (avançado)"}
+              </Button>
+            </div>
+
+            {mode === 'manual' && (
+              <Card className="border-dashed">
+                <CardContent className="p-4 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Número WhatsApp Business</Label>
+                    <Input className="h-8 text-xs font-mono" value={config.businessPhone} onChange={e => setConfig({...config, businessPhone: phoneMask(e.target.value)})} placeholder="(11) 99999-9999" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Phone Number ID</Label>
+                    <Input className="h-8 text-xs font-mono" value={config.phoneNumberId} onChange={e => setConfig({...config, phoneNumberId: e.target.value.trim()})} placeholder="123456789" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Access Token</Label>
+                    <div className="relative">
+                      <Input type={showToken ? 'text' : 'password'} className="h-8 text-xs font-mono pr-8" value={config.accessToken} onChange={e => setConfig({...config, accessToken: e.target.value.trim()})} />
+                      <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowToken(!showToken)}>
+                        {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Test Connection */}
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                 <h3 className="text-xs font-semibold flex items-center gap-2"><Wifi size={14} /> Testar Conexão</h3>
+                 <Button variant="outline" size="sm" className="w-full h-8 text-[10px] gap-1.5" onClick={handleTest} disabled={testing}>
+                    {testing ? <Loader2 size={12} className="animate-spin" /> : <Wifi size={12} />}
+                    Enviar mensagem de teste
+                 </Button>
+                 {testResult && (
+                   <div className={`p-2 rounded text-[10px] border ${testResult.success ? 'bg-green-500/10 border-green-500/20 text-green-600' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}>
+                     {testResult.message}
+                   </div>
+                 )}
               </CardContent>
             </Card>
           </TabsContent>
