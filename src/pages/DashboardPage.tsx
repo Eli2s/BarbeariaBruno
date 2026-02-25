@@ -1,7 +1,5 @@
 
-import { useState, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency } from '@/lib/format';
 import { sendCashbackReminder } from '@/lib/whatsappApi';
 import { AppLayout } from '@/components/AppLayout';
@@ -23,6 +21,15 @@ import {
 import { GlassCard } from '@/components/dashboard/GlassCard';
 import { StatCard } from '@/components/dashboard/StatCard';
 
+import { useClients } from '@/hooks/useClients';
+import { usePlans } from '@/hooks/usePlans';
+import { useOrders } from '@/hooks/useOrders';
+import { useBarbers } from '@/hooks/useBarbers';
+import { useServices } from '@/hooks/useServices';
+import { useCashbacks, useUpdateCashback } from '@/hooks/useCashbacks';
+import { apiGet } from '@/api/apiClient';
+import type { Client } from '@/types';
+
 type BarberPeriod = 'semanal' | 'mensal' | '30dias';
 
 const BARBER_COLORS = [
@@ -35,42 +42,61 @@ const BARBER_COLORS = [
 
 export default function DashboardPage() {
   const [barberPeriod, setBarberPeriod] = useState<BarberPeriod>('mensal');
-  const [refreshKey, setRefreshKey] = useState(0);
   const [hideValues, setHideValues] = useState(false);
+
+  // React Query hooks
+  const { data: clients = [], refetch: refetchClients } = useClients();
+  const { data: allPlans = [], refetch: refetchPlans } = usePlans();
+  const { data: orders = [], refetch: refetchOrders } = useOrders();
+  const { data: allBarbers = [], refetch: refetchBarbers } = useBarbers();
+  const { data: allServices = [], refetch: refetchServices } = useServices();
+  const { data: allCashbacks = [], refetch: refetchCashbacks } = useCashbacks();
+  const updateCashbackMutation = useUpdateCashback();
+
+  // Filter active plans and barbers on the client side
+  const plans = allPlans.filter(p => p.status === 'ativo');
+  const barbers = allBarbers.filter(b => b.isActive);
 
   // ── Expire cashbacks ──
   useEffect(() => {
     const checkCashbacks = async () => {
-      const activeCashbacks = await db.cashbacks.where('status').equals('ativo').toArray();
+      const activeCashbacks = allCashbacks.filter(cb => cb.status === 'ativo');
       const now = new Date();
       for (const cb of activeCashbacks) {
         const expDate = new Date(cb.expirationDate);
         if (expDate < now) {
-          await db.cashbacks.update(cb.id!, { status: 'expirado' });
+          await updateCashbackMutation.mutateAsync({ id: cb.id!, status: 'expirado' });
           continue;
         }
         const daysLeft = differenceInDays(expDate, now);
         if ([15, 10, 5, 3, 1].includes(daysLeft)) {
           const todayStr = format(now, 'yyyy-MM-dd');
           if (cb.lastReminderSent !== todayStr) {
-            const client = await db.clients.get(cb.clientId);
-            if (client?.whatsapp) {
-              sendCashbackReminder(client.name, cb.percentage, daysLeft, client.whatsapp).catch(() => {});
-              await db.cashbacks.update(cb.id!, { lastReminderSent: todayStr });
-            }
+            try {
+              const client = await apiGet<Client>(`/clients/${cb.clientId}`);
+              if (client?.whatsapp) {
+                sendCashbackReminder(client.name, cb.percentage, daysLeft, client.whatsapp).catch(() => {});
+                await updateCashbackMutation.mutateAsync({ id: cb.id!, lastReminderSent: todayStr });
+              }
+            } catch { /* ignore */ }
           }
         }
       }
     };
-    checkCashbacks();
-  }, []);
+    if (allCashbacks.length > 0) {
+      checkCashbacks();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCashbacks.length]);
 
-  // ── Live queries ──
-  const clients  = useLiveQuery(() => db.clients.toArray(), [refreshKey]) ?? [];
-  const plans    = useLiveQuery(() => db.plans.where('status').equals('ativo').toArray(), [refreshKey]) ?? [];
-  const orders   = useLiveQuery(() => db.orders.toArray(), [refreshKey]) ?? [];
-  const barbers  = useLiveQuery(() => db.barbers.toArray().then(bs => bs.filter(b => b.isActive)), [refreshKey]) ?? [];
-  const allServices = useLiveQuery(() => db.services.toArray(), [refreshKey]) ?? [];
+  const handleRefresh = useCallback(() => {
+    refetchClients();
+    refetchPlans();
+    refetchOrders();
+    refetchBarbers();
+    refetchServices();
+    refetchCashbacks();
+  }, [refetchClients, refetchPlans, refetchOrders, refetchBarbers, refetchServices, refetchCashbacks]);
 
   const now = new Date();
   const thisMonth = format(now, 'yyyy-MM');
@@ -188,7 +214,7 @@ export default function DashboardPage() {
             >
               {hideValues ? <EyeOff size={14} /> : <Eye size={14} />}
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={() => setRefreshKey(k => k + 1)}>
+            <Button size="sm" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={handleRefresh}>
               <RefreshCw size={14} />
             </Button>
           </div>

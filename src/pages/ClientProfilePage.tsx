@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { useClient } from '@/hooks/useClients';
+import { useServices } from '@/hooks/useServices';
+import { usePlans } from '@/hooks/usePlans';
 import { analyzeClient, getMonthlySpending } from '@/lib/analytics';
 import { formatCurrency, formatPhone } from '@/lib/format';
 import { openWhatsApp } from '@/lib/whatsapp';
@@ -18,9 +19,9 @@ export default function ClientProfilePage() {
   const navigate = useNavigate();
   const clientId = Number(id);
 
-  const client = useLiveQuery(() => db.clients.get(clientId), [clientId]);
-  const services = useLiveQuery(() => db.services.where('clientId').equals(clientId).toArray(), [clientId]) ?? [];
-  const plans = useLiveQuery(() => db.plans.where('clientId').equals(clientId).toArray(), [clientId]) ?? [];
+  const { data: client } = useClient(clientId);
+  const { data: services = [] } = useServices(clientId);
+  const { data: plans = [] } = usePlans(clientId);
 
   if (!client) return null;
 

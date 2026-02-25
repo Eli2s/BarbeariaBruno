@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
 export default function ProductsPage() {
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  const { data: products = [], isLoading } = useProducts();
+  const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
+
   const [search, setSearch] = useState('');
   const [editId, setEditId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -40,30 +43,31 @@ export default function ProductsPage() {
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione um arquivo de imagem'); return; }
     if (file.size > 5 * 1024 * 1024) { toast.error('Imagem muito grande (máx 5MB)'); return; }
-
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImage(reader.result as string);
-    };
+    reader.onloadend = () => { setImage(reader.result as string); };
     reader.readAsDataURL(file);
   };
 
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error('Nome obrigatório'); return; }
     const data = { name: name.trim(), category, price, stock, description: description.trim() || undefined, image: image.trim() || undefined };
-    if (editId) {
-      await db.products.update(editId, data);
-      toast.success('Produto atualizado!');
-    } else {
-      await db.products.add(data);
-      toast.success('Produto cadastrado!');
-    }
-    resetForm(); setOpen(false);
+    try {
+      if (editId) {
+        await updateProduct.mutateAsync({ id: editId, ...data });
+        toast.success('Produto atualizado!');
+      } else {
+        await createProduct.mutateAsync(data as any);
+        toast.success('Produto cadastrado!');
+      }
+      resetForm(); setOpen(false);
+    } catch { toast.error('Erro ao salvar produto'); }
   };
 
   const handleDelete = async (id: number) => {
-    await db.products.delete(id);
-    toast.success('Produto removido!');
+    try {
+      await deleteProduct.mutateAsync(id);
+      toast.success('Produto removido!');
+    } catch { toast.error('Erro ao remover'); }
   };
 
   return (
@@ -88,54 +92,20 @@ export default function ProductsPage() {
                 <div className="space-y-2">
                   <Label>Imagem do Produto</Label>
                   <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={imageMode === 'upload' ? 'default' : 'outline'}
-                      className="text-xs gap-1"
-                      onClick={() => setImageMode('upload')}
-                    >
-                      <Upload size={12} /> Upload
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={imageMode === 'url' ? 'default' : 'outline'}
-                      className="text-xs"
-                      onClick={() => setImageMode('url')}
-                    >
-                      URL
-                    </Button>
+                    <Button type="button" size="sm" variant={imageMode === 'upload' ? 'default' : 'outline'} className="text-xs gap-1" onClick={() => setImageMode('upload')}><Upload size={12} /> Upload</Button>
+                    <Button type="button" size="sm" variant={imageMode === 'url' ? 'default' : 'outline'} className="text-xs" onClick={() => setImageMode('url')}>URL</Button>
                   </div>
 
                   {imageMode === 'upload' ? (
                     <div className="space-y-2">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                      />
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                       {image && image.startsWith('data:') ? (
                         <div className="relative">
                           <img src={image} alt="Preview" className="w-full h-32 object-cover rounded-lg border" />
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="absolute top-1 right-1 h-6 w-6"
-                            onClick={() => setImage('')}
-                          >
-                            <X size={12} />
-                          </Button>
+                          <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => setImage('')}><X size={12} /></Button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full h-28 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 hover:border-primary/50 hover:bg-secondary/30 transition-all cursor-pointer"
-                        >
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full h-28 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 hover:border-primary/50 hover:bg-secondary/30 transition-all cursor-pointer">
                           <Upload size={24} className="text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">Clique para selecionar uma imagem</span>
                           <span className="text-[10px] text-muted-foreground/60">JPG, PNG, WebP · Máx 5MB</span>
@@ -146,7 +116,6 @@ export default function ProductsPage() {
                     <Input value={image} onChange={e => setImage(e.target.value)} placeholder="https://..." />
                   )}
 
-                  {/* URL preview */}
                   {imageMode === 'url' && image && !image.startsWith('data:') && (
                     <img src={image} alt="Preview" className="w-full h-32 object-cover rounded-lg border" onError={(e) => (e.currentTarget.style.display = 'none')} />
                   )}
@@ -163,30 +132,34 @@ export default function ProductsPage() {
           <Input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
 
-        <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
-          {filtered.map(p => (
-            <Card key={p.id}>
-              <CardContent className="p-3 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg gradient-subtle flex items-center justify-center shrink-0 overflow-hidden">
-                  {p.image ? (
-                    <img src={p.image} alt={p.name} className="w-12 h-12 object-cover rounded-lg" />
-                  ) : (
-                    <Package size={20} className="text-muted-foreground/40" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.category || 'Sem categoria'} · Estoque: {p.stock}</p>
-                  <p className="text-sm font-semibold text-primary">R$ {p.price.toFixed(2).replace('.', ',')}</p>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}><Edit size={14} /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(p.id!)}><Trash2 size={14} /></Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">Carregando...</div>
+        ) : (
+          <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+            {filtered.map(p => (
+              <Card key={p.id}>
+                <CardContent className="p-3 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg gradient-subtle flex items-center justify-center shrink-0 overflow-hidden">
+                    {p.image ? (
+                      <img src={p.image} alt={p.name} className="w-12 h-12 object-cover rounded-lg" />
+                    ) : (
+                      <Package size={20} className="text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">{p.category || 'Sem categoria'} · Estoque: {p.stock}</p>
+                    <p className="text-sm font-semibold text-primary">R$ {p.price.toFixed(2).replace('.', ',')}</p>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}><Edit size={14} /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(p.id!)}><Trash2 size={14} /></Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </AppLayout>
   );

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { usePlan, useUpdatePlan } from '@/hooks/usePlans';
+import { useClient } from '@/hooks/useClients';
+import { useCreatePlanPayment } from '@/hooks/usePlanPayments';
 import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +17,10 @@ import { sendPaymentConfirmation } from '@/lib/whatsappApi';
 export default function PlanCheckoutPage() {
   const { planId } = useParams();
   const navigate = useNavigate();
-  const plan = useLiveQuery(() => db.plans.get(Number(planId)), [planId]);
-  const client = useLiveQuery(() => plan ? db.clients.get(plan.clientId) : undefined, [plan]);
+  const { data: plan } = usePlan(planId ? Number(planId) : undefined);
+  const { data: client } = useClient(plan?.clientId);
+  const createPlanPayment = useCreatePlanPayment();
+  const updatePlan = useUpdatePlan();
 
   const [step, setStep] = useState<'card' | 'done'>('card');
   const [cardNumber, setCardNumber] = useState('');
@@ -48,36 +51,36 @@ export default function PlanCheckoutPage() {
     setProcessing(true);
     await new Promise(r => setTimeout(r, 2000));
 
-    // Register payment
-    await db.planPayments.add({
-      planId: plan.id!,
-      expectedDate: format(new Date(), 'yyyy-MM-dd'),
-      paidDate: format(new Date(), 'yyyy-MM-dd'),
-      status: 'pago',
-      value: plan.value,
-    });
-
-    // Update next charge
     const days = plan.periodicity === 'quinzenal' ? 15 : plan.periodicity === 'mensal' ? 30 : (plan.customDays || 30);
-    await db.plans.update(plan.id!, { nextCharge: format(addDays(new Date(), days), 'yyyy-MM-dd') });
+    const nextCharge = format(addDays(new Date(), days), 'yyyy-MM-dd');
 
-    setProcessing(false);
-    setStep('done');
+    try {
+      await createPlanPayment.mutateAsync({
+        planId: plan.id!,
+        expectedDate: format(new Date(), 'yyyy-MM-dd'),
+        paidDate: format(new Date(), 'yyyy-MM-dd'),
+        status: 'pago',
+        value: plan.value,
+      });
+      await updatePlan.mutateAsync({ id: plan.id!, nextCharge });
 
-    // Enviar confirmação de pagamento via WhatsApp (fire-and-forget)
-    if (client?.whatsapp) {
-      sendPaymentConfirmation(client, {
-        ...plan,
-        nextCharge: format(addDays(new Date(), days), 'yyyy-MM-dd'),
-      })
-        .then(result => {
-          if (result.success) {
-            toast.success('Confirmação de pagamento enviada via WhatsApp! 📱');
-          } else if (result.errorMessage) {
-            toast.warning('WhatsApp não enviado', { description: result.errorMessage });
-          }
-        })
-        .catch(() => {});
+      setProcessing(false);
+      setStep('done');
+
+      if (client?.whatsapp) {
+        sendPaymentConfirmation(client, { ...plan, nextCharge })
+          .then(result => {
+            if (result.success) {
+              toast.success('Confirmação de pagamento enviada via WhatsApp! 📱');
+            } else if (result.errorMessage) {
+              toast.warning('WhatsApp não enviado', { description: result.errorMessage });
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {
+      setProcessing(false);
+      toast.error('Erro ao processar pagamento');
     }
   };
 
@@ -113,7 +116,6 @@ export default function PlanCheckoutPage() {
 
         <h2 className="text-xl font-bold">Checkout do Plano</h2>
 
-        {/* Plan Summary */}
         <Card className="gradient-subtle">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -130,7 +132,6 @@ export default function PlanCheckoutPage() {
           </CardContent>
         </Card>
 
-        {/* Card Form */}
         <Card>
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2 mb-2">
@@ -139,52 +140,26 @@ export default function PlanCheckoutPage() {
             </div>
             <div className="space-y-1">
               <Label>Número do Cartão</Label>
-              <Input
-                value={cardNumber}
-                onChange={e => setCardNumber(formatCardNumber(e.target.value))}
-                placeholder="0000 0000 0000 0000"
-                maxLength={19}
-                inputMode="numeric"
-              />
+              <Input value={cardNumber} onChange={e => setCardNumber(formatCardNumber(e.target.value))} placeholder="0000 0000 0000 0000" maxLength={19} inputMode="numeric" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Validade</Label>
-                <Input
-                  value={cardExpiry}
-                  onChange={e => setCardExpiry(formatExpiry(e.target.value))}
-                  placeholder="MM/AA"
-                  maxLength={5}
-                  inputMode="numeric"
-                />
+                <Input value={cardExpiry} onChange={e => setCardExpiry(formatExpiry(e.target.value))} placeholder="MM/AA" maxLength={5} inputMode="numeric" />
               </div>
               <div className="space-y-1">
                 <Label>CVV</Label>
-                <Input
-                  value={cardCvv}
-                  onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="123"
-                  maxLength={4}
-                  inputMode="numeric"
-                />
+                <Input value={cardCvv} onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="123" maxLength={4} inputMode="numeric" />
               </div>
             </div>
             <div className="space-y-1">
               <Label>Nome no cartão</Label>
-              <Input
-                value={cardName}
-                onChange={e => setCardName(e.target.value.toUpperCase())}
-                placeholder="NOME COMO NO CARTÃO"
-              />
+              <Input value={cardName} onChange={e => setCardName(e.target.value.toUpperCase())} placeholder="NOME COMO NO CARTÃO" />
             </div>
           </CardContent>
         </Card>
 
-        <Button
-          className="w-full h-12 font-semibold"
-          onClick={handlePay}
-          disabled={processing}
-        >
+        <Button className="w-full h-12 font-semibold" onClick={handlePay} disabled={processing}>
           {processing ? (
             <span className="flex items-center gap-2">
               <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>

@@ -1,98 +1,100 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { db } from '@/db/database';
+import { useClient, useCreateClient, useUpdateClient } from '@/hooks/useClients';
 import { AppLayout } from '@/components/AppLayout';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft } from 'lucide-react';
-import { phoneMask } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ClientFormPage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const isEdit = !!id;
+  const isEditing = !!id;
+  const { data: existingClient } = useClient(id ? Number(id) : undefined);
+  const createClient = useCreateClient();
+  const updateClient = useUpdateClient();
 
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [photo, setPhoto] = useState('');
+  const [tags, setTags] = useState('');
 
   useEffect(() => {
-    if (isEdit) {
-      db.clients.get(Number(id)).then(c => {
-        if (c) {
-          setName(c.name);
-          setNickname(c.nickname);
-          setWhatsapp(phoneMask(c.whatsapp));
-          setPhoto(c.photo || '');
-        }
-      });
+    if (existingClient) {
+      setName(existingClient.name);
+      setNickname(existingClient.nickname);
+      setWhatsapp(existingClient.whatsapp);
+      setPhoto(existingClient.photo || '');
+      setTags(existingClient.tags.join(', '));
     }
-  }, [id, isEdit]);
+  }, [existingClient]);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPhone = whatsapp.replace(/\D/g, '');
-    if (!name.trim()) {
-      toast.error('Preencha o nome do cliente');
+  const handleSave = async () => {
+    if (!name.trim() || !whatsapp.trim()) {
+      toast.error('Nome e WhatsApp são obrigatórios');
       return;
     }
-    const data = { name: name.trim(), nickname: nickname.trim(), whatsapp: cleanPhone, photo, tags: [] as string[] };
-    if (isEdit) {
-      await db.clients.update(Number(id), data);
-      toast.success('Cliente atualizado!');
-    } else {
-      await db.clients.add({ ...data, createdAt: new Date().toISOString().slice(0, 10) });
-      toast.success('Cliente cadastrado!');
+
+    const data = {
+      name: name.trim(),
+      nickname: nickname.trim() || name.trim(),
+      whatsapp: whatsapp.trim(),
+      photo: photo.trim() || undefined,
+      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      createdAt: isEditing ? existingClient!.createdAt : new Date().toISOString(),
+    };
+
+    try {
+      if (isEditing) {
+        await updateClient.mutateAsync({ id: Number(id), ...data });
+        toast.success('Cliente atualizado!');
+      } else {
+        await createClient.mutateAsync(data as any);
+        toast.success('Cliente cadastrado!');
+      }
+      navigate(-1);
+    } catch {
+      toast.error('Erro ao salvar cliente');
     }
-    navigate(-1);
   };
 
   return (
     <AppLayout>
-      <div className="p-4 max-w-lg md:max-w-2xl mx-auto space-y-4">
+      <div className="p-4 max-w-lg mx-auto space-y-4">
         <div className="flex items-center gap-3 pt-2">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft size={20} /></Button>
-          <h1 className="text-xl font-bold">{isEdit ? 'Editar Cliente' : 'Novo Cliente'}</h1>
+          <h1 className="text-xl font-bold">{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Nome *</Label>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>Nome completo *</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do cliente" />
           </div>
-          <div className="space-y-2">
-            <Label>Apelido / Como chamo</Label>
-            <Input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="Como você chama ele" />
+          <div className="space-y-1">
+            <Label>Apelido</Label>
+            <Input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="Apelido" />
           </div>
-          <div className="space-y-2">
-            <Label>WhatsApp</Label>
-            <Input
-              value={whatsapp}
-              onChange={e => setWhatsapp(phoneMask(e.target.value))}
-              placeholder="(11) 99999-9999"
-              inputMode="numeric"
-            />
+          <div className="space-y-1">
+            <Label>WhatsApp *</Label>
+            <Input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="11999887766" />
           </div>
-          <div className="space-y-2">
-            <Label>Foto</Label>
-            <Input type="file" accept="image/*" onChange={handlePhotoUpload} />
-            {photo && <img src={photo} alt="Preview" className="w-16 h-16 rounded-full object-cover" />}
+          <div className="space-y-1">
+            <Label>Foto (URL)</Label>
+            <Input value={photo} onChange={e => setPhoto(e.target.value)} placeholder="https://..." />
           </div>
-          <Button type="submit" className="w-full h-12 font-semibold">
-            {isEdit ? 'Salvar Alterações' : 'Cadastrar Cliente'}
-          </Button>
-        </form>
+          <div className="space-y-1">
+            <Label>Tags (separadas por vírgula)</Label>
+            <Input value={tags} onChange={e => setTags(e.target.value)} placeholder="VIP, Barba, Mensal" />
+          </div>
+        </div>
+
+        <Button className="w-full gap-2" onClick={handleSave} disabled={createClient.isPending || updateClient.isPending}>
+          <Save size={16} /> {isEditing ? 'Salvar Alterações' : 'Cadastrar Cliente'}
+        </Button>
       </div>
     </AppLayout>
   );

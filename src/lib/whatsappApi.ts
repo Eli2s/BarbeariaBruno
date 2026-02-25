@@ -2,10 +2,11 @@
  * WhatsApp Cloud API (Meta) — Serviço de envio
  *
  * Chama diretamente a API graph.facebook.com sem backend intermediário.
- * As credenciais ficam armazenadas no IndexedDB (tabela `settings`).
+ * As credenciais ficam armazenadas no backend (tabela `settings`).
  */
 
-import { db } from '@/db/database';
+import { fetchSetting, upsertSetting } from '@/api/settings';
+import { fetchMessageTemplates } from '@/api/messageTemplates';
 import { format } from 'date-fns';
 import type { WhatsAppConfig, Client, Service, Plan } from '@/types';
 
@@ -18,7 +19,7 @@ const META_API_VERSION = 'v19.0';
 
 export async function getWhatsAppConfig(): Promise<WhatsAppConfig | null> {
   try {
-    const row = await db.settings.get(SETTINGS_KEY);
+    const row = await fetchSetting(SETTINGS_KEY);
     if (!row) return null;
     return JSON.parse(row.value) as WhatsAppConfig;
   } catch {
@@ -27,7 +28,7 @@ export async function getWhatsAppConfig(): Promise<WhatsAppConfig | null> {
 }
 
 export async function saveWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
-  await db.settings.put({ key: SETTINGS_KEY, value: JSON.stringify(config) });
+  await upsertSetting(SETTINGS_KEY, JSON.stringify(config));
 }
 
 export async function isWhatsAppConfigured(): Promise<boolean> {
@@ -243,10 +244,13 @@ export async function sendCashbackMessage(
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
 
-  const savedTemplate = await db.messageTemplates
-    .where('type').equals('cashback_activated').first();
-
-  const template = savedTemplate?.content || TEMPLATE_CASHBACK_ACTIVATED;
+  // Fetch template from API
+  let template = TEMPLATE_CASHBACK_ACTIVATED;
+  try {
+    const templates = await fetchMessageTemplates();
+    const savedTemplate = templates.find(t => t.type === 'cashback_activated');
+    if (savedTemplate) template = savedTemplate.content;
+  } catch { /* use default */ }
 
   const message = replaceVars(template, {
     nome: clientName,
@@ -270,10 +274,13 @@ export async function sendCashbackReminder(
   const config = await getWhatsAppConfig();
   const shopName = config?.shopName || 'Bruno Barbearia';
 
-  const savedTemplate = await db.messageTemplates
-    .where('type').equals('cashback_reminder').first();
-
-  const template = savedTemplate?.content || TEMPLATE_CASHBACK_REMINDER;
+  // Fetch template from API
+  let template = TEMPLATE_CASHBACK_REMINDER;
+  try {
+    const templates = await fetchMessageTemplates();
+    const savedTemplate = templates.find(t => t.type === 'cashback_reminder');
+    if (savedTemplate) template = savedTemplate.content;
+  } catch { /* use default */ }
 
   const message = replaceVars(template, {
     nome: clientName,

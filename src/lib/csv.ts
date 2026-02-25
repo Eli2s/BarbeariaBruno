@@ -1,4 +1,6 @@
-import { db } from '@/db/database';
+import { fetchClients } from '@/api/clients';
+import { fetchServices } from '@/api/services';
+import { fetchPlans } from '@/api/plans';
 
 function downloadCSV(filename: string, content: string) {
   const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8;' });
@@ -11,15 +13,15 @@ function downloadCSV(filename: string, content: string) {
 }
 
 export async function exportClients() {
-  const clients = await db.clients.toArray();
+  const clients = await fetchClients();
   const header = 'Nome,Apelido,WhatsApp,Tags,Cadastrado em';
   const rows = clients.map(c => `"${c.name}","${c.nickname}","${c.whatsapp}","${c.tags.join('; ')}","${c.createdAt}"`);
   downloadCSV('clientes.csv', [header, ...rows].join('\n'));
 }
 
 export async function exportServices() {
-  const services = await db.services.toArray();
-  const clients = await db.clients.toArray();
+  const services = await fetchServices();
+  const clients = await fetchClients();
   const clientMap = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const header = 'Cliente,Data,Serviços,Produtos,Valor Total,Pagamento,Obs,Crédito Plano';
   const rows = services.map(s =>
@@ -29,8 +31,8 @@ export async function exportServices() {
 }
 
 export async function exportPlans() {
-  const plans = await db.plans.toArray();
-  const clients = await db.clients.toArray();
+  const plans = await fetchPlans();
+  const clients = await fetchClients();
   const clientMap = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const header = 'Cliente,Plano,Valor,Periodicidade,Início,Próxima Cobrança,Status';
   const rows = plans.map(p =>

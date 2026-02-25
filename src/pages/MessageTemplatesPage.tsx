@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +9,12 @@ import { ArrowLeft, MessageSquare, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import type { MessageTemplate } from '@/types';
+
+import {
+  useMessageTemplates,
+  useCreateMessageTemplatesBulk,
+  useUpdateMessageTemplate,
+} from '@/hooks/useMessageTemplates';
 
 const DEFAULT_TEMPLATES: Omit<MessageTemplate, 'id'>[] = [
   {
@@ -32,18 +36,18 @@ const DEFAULT_TEMPLATES: Omit<MessageTemplate, 'id'>[] = [
 
 export default function MessageTemplatesPage() {
   const navigate = useNavigate();
-  const templates = useLiveQuery(() => db.messageTemplates.toArray()) ?? [];
+  const { data: templates = [] } = useMessageTemplates();
+  const createBulkMutation = useCreateMessageTemplatesBulk();
+  const updateMutation = useUpdateMessageTemplate();
   const [editValues, setEditValues] = useState<Record<string, string>>({});
 
+  // Seed default templates if none exist
   useEffect(() => {
-    const init = async () => {
-      const count = await db.messageTemplates.count();
-      if (count === 0) {
-        await db.messageTemplates.bulkAdd(DEFAULT_TEMPLATES);
-      }
-    };
-    init();
-  }, []);
+    if (templates.length === 0) {
+      createBulkMutation.mutateAsync(DEFAULT_TEMPLATES).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates.length]);
 
   useEffect(() => {
     const map: Record<string, string> = {};
@@ -54,8 +58,12 @@ export default function MessageTemplatesPage() {
   const handleSave = async (template: MessageTemplate) => {
     const newContent = editValues[template.type];
     if (newContent !== undefined) {
-      await db.messageTemplates.update(template.id!, { content: newContent });
-      toast.success(`Template "${template.name}" salvo!`);
+      try {
+        await updateMutation.mutateAsync({ id: template.id!, content: newContent });
+        toast.success(`Template "${template.name}" salvo!`);
+      } catch {
+        toast.error('Erro ao salvar template');
+      }
     }
   };
 

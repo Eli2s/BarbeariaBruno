@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { PublicLayout } from '@/components/PublicLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,12 +10,20 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { openWhatsApp } from '@/lib/whatsapp';
 
+import { useProducts, useUpdateProduct } from '@/hooks/useProducts';
+import { useCreateOrder } from '@/hooks/useOrders';
+
 type PaymentMethod = 'cartao' | 'pix' | 'link_whatsapp';
 
 export default function StoreCheckoutPage() {
   const { productId } = useParams();
   const navigate = useNavigate();
-  const product = useLiveQuery(() => db.products.get(Number(productId)), [productId]);
+
+  // React Query hooks
+  const { data: products = [] } = useProducts();
+  const product = products.find(p => p.id === Number(productId));
+  const createOrderMutation = useCreateOrder();
+  const updateProductMutation = useUpdateProduct();
 
   const [step, setStep] = useState<'info' | 'payment' | 'done'>('info');
   const [name, setName] = useState('');
@@ -52,48 +58,56 @@ export default function StoreCheckoutPage() {
 
     setProcessing(true);
 
-    // Simulate processing
-    await new Promise(r => setTimeout(r, 2000));
+    try {
+      // Simulate processing
+      await new Promise(r => setTimeout(r, 2000));
 
-    const createdAt = format(new Date(), "yyyy-MM-dd'T'HH:mm");
-    const orderId = await db.orders.add({
-      items: [{ productId: product.id!, name: product.name, quantity, unitPrice: product.price }],
-      totalValue: total,
-      customerName: name,
-      customerWhatsapp: whatsapp,
-      paymentMethod,
-      status: paymentMethod === 'link_whatsapp' ? 'pendente' : 'pago',
-      createdAt,
-    });
+      const createdAt = format(new Date(), "yyyy-MM-dd'T'HH:mm");
+      const newOrder = await createOrderMutation.mutateAsync({
+        items: [{ productId: product.id!, name: product.name, quantity, unitPrice: product.price }],
+        totalValue: total,
+        customerName: name,
+        customerWhatsapp: whatsapp,
+        paymentMethod,
+        status: paymentMethod === 'link_whatsapp' ? 'pendente' : 'pago',
+        createdAt,
+      });
 
-    // Decrease stock
-    await db.products.update(product.id!, { stock: Math.max(0, product.stock - quantity) });
+      // Decrease stock
+      await updateProductMutation.mutateAsync({
+        id: product.id!,
+        stock: Math.max(0, product.stock - quantity),
+      });
 
-    // Send receipt via WhatsApp
-    const statusLabel = paymentMethod === 'link_whatsapp' ? '⏳ Aguardando pagamento' : '✅ Pago';
-    const paymentLabel = paymentMethod === 'cartao' ? 'Cartão de Crédito' : paymentMethod === 'pix' ? 'Pix' : 'Link WhatsApp';
-    const dateFormatted = format(new Date(), 'dd/MM/yyyy HH:mm');
+      // Send receipt via WhatsApp
+      const statusLabel = paymentMethod === 'link_whatsapp' ? '⏳ Aguardando pagamento' : '✅ Pago';
+      const paymentLabel = paymentMethod === 'cartao' ? 'Cartão de Crédito' : paymentMethod === 'pix' ? 'Pix' : 'Link WhatsApp';
+      const dateFormatted = format(new Date(), 'dd/MM/yyyy HH:mm');
 
-    const receipt = `🧾 *COMPROVANTE DE COMPRA*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `💈 *Bruno Barbearia*\n\n` +
-      `📦 Produto: ${product.name}\n` +
-      `🔢 Quantidade: ${quantity}\n` +
-      `💰 Valor: R$ ${total.toFixed(2).replace('.', ',')}\n` +
-      `💳 Pagamento: ${paymentLabel}\n` +
-      `📅 Data: ${dateFormatted}\n` +
-      `🆔 Pedido: #${orderId}\n` +
-      `📌 Status: ${statusLabel}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      (paymentMethod === 'link_whatsapp'
-        ? `\n🔗 Finalize o pagamento pelo link:\n[Link de pagamento simulado]\n`
-        : `\nObrigado pela compra! 🙏\n`) +
-      `Qualquer dúvida, estamos à disposição! ✂️`;
+      const receipt = `🧾 *COMPROVANTE DE COMPRA*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💈 *Bruno Barbearia*\n\n` +
+        `📦 Produto: ${product.name}\n` +
+        `🔢 Quantidade: ${quantity}\n` +
+        `💰 Valor: R$ ${total.toFixed(2).replace('.', ',')}\n` +
+        `💳 Pagamento: ${paymentLabel}\n` +
+        `📅 Data: ${dateFormatted}\n` +
+        `🆔 Pedido: #${newOrder.id}\n` +
+        `📌 Status: ${statusLabel}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        (paymentMethod === 'link_whatsapp'
+          ? `\n🔗 Finalize o pagamento pelo link:\n[Link de pagamento simulado]\n`
+          : `\nObrigado pela compra! 🙏\n`) +
+        `Qualquer dúvida, estamos à disposição! ✂️`;
 
-    openWhatsApp(whatsapp, receipt);
+      openWhatsApp(whatsapp, receipt);
 
-    setProcessing(false);
-    setStep('done');
+      setStep('done');
+    } catch {
+      toast.error('Erro ao processar pagamento');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const formatCardNumber = (value: string) => {

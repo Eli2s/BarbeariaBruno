@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { useClients } from '@/hooks/useClients';
+import { usePlan, useCreatePlan, useUpdatePlan } from '@/hooks/usePlans';
+import { usePlanPayments, useCreatePlanPayment } from '@/hooks/usePlanPayments';
+import { useServices } from '@/hooks/useServices';
 import { analyzeClient } from '@/lib/analytics';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -32,46 +34,45 @@ export default function PlanFormPage() {
   const [benefits, setBenefits] = useState('');
   const [internalNote, setInternalNote] = useState('');
 
-  const clients = useLiveQuery(() => db.clients.toArray()) ?? [];
-  const planPayments = useLiveQuery(() => id ? db.planPayments.where('planId').equals(Number(id)).toArray() : [], [id]) ?? [];
+  const { data: clients = [] } = useClients();
+  const { data: existingPlan } = usePlan(isEdit ? Number(id) : undefined);
+  const { data: planPayments = [] } = usePlanPayments(isEdit ? Number(id) : undefined);
+  const createPlan = useCreatePlan();
+  const updatePlan = useUpdatePlan();
+  const createPlanPayment = useCreatePlanPayment();
+
+  // Load services for auto-suggest (only when creating new plan)
+  const { data: clientServices = [] } = useServices(clientId && !isEdit ? clientId : undefined);
+  const { data: clientPlans = [] } = usePlans(clientId && !isEdit ? clientId : undefined);
 
   useEffect(() => {
-    if (isEdit) {
-      db.plans.get(Number(id)).then(p => {
-        if (p) {
-          setClientId(p.clientId); setName(p.name); setDescription(p.description);
-          setValue(p.value); setPeriodicity(p.periodicity); setCustomDays(p.customDays || 30);
-          setStartDate(p.startDate); setStatus(p.status); setBenefits(p.benefits || '');
-          setInternalNote(p.internalNote || '');
-        }
-      });
+    if (existingPlan) {
+      setClientId(existingPlan.clientId); setName(existingPlan.name); setDescription(existingPlan.description);
+      setValue(existingPlan.value); setPeriodicity(existingPlan.periodicity); setCustomDays(existingPlan.customDays || 30);
+      setStartDate(existingPlan.startDate); setStatus(existingPlan.status); setBenefits(existingPlan.benefits || '');
+      setInternalNote(existingPlan.internalNote || '');
     }
-  }, [id, isEdit]);
+  }, [existingPlan]);
 
   // Auto-suggest on client selection
   useEffect(() => {
-    if (clientId && !isEdit) {
-      Promise.all([
-        db.services.where('clientId').equals(clientId).toArray(),
-        db.plans.where('clientId').equals(clientId).toArray(),
-      ]).then(([svcs, plans]) => {
-        const analysis = analyzeClient(svcs, plans);
-        if (analysis.totalVisits > 3) {
-          if (analysis.avgDaysBetweenVisits <= 16) {
-            setName('Plano Quinzenal Premium');
-            setDescription('Corte + Barba a cada 15 dias');
-            setValue(Math.round(analysis.averageTicket * 1.7));
-            setPeriodicity('quinzenal');
-          } else {
-            setName('Plano Mensal');
-            setDescription('Corte mensal com desconto');
-            setValue(Math.round(analysis.averageTicket * 0.9));
-            setPeriodicity('mensal');
-          }
+    if (clientId && !isEdit && clientServices.length > 0) {
+      const analysis = analyzeClient(clientServices, clientPlans);
+      if (analysis.totalVisits > 3) {
+        if (analysis.avgDaysBetweenVisits <= 16) {
+          setName('Plano Quinzenal Premium');
+          setDescription('Corte + Barba a cada 15 dias');
+          setValue(Math.round(analysis.averageTicket * 1.7));
+          setPeriodicity('quinzenal');
+        } else {
+          setName('Plano Mensal');
+          setDescription('Corte mensal com desconto');
+          setValue(Math.round(analysis.averageTicket * 0.9));
+          setPeriodicity('mensal');
         }
-      });
+      }
     }
-  }, [clientId, isEdit]);
+  }, [clientId, isEdit, clientServices, clientPlans]);
 
   const calcNextCharge = () => {
     const days = periodicity === 'quinzenal' ? 14 : periodicity === 'mensal' ? 30 : customDays;
@@ -85,17 +86,18 @@ export default function PlanFormPage() {
       clientId, name, description, value, periodicity, customDays: periodicity === 'personalizado' ? customDays : undefined,
       startDate, nextCharge: calcNextCharge(), status, benefits, internalNote,
     };
-    if (isEdit) {
-      await db.plans.update(Number(id), data);
-      toast.success('Plano atualizado!');
-      navigate(-1);
-    } else {
-      const planId = await db.plans.add({ ...data, createdAt: format(new Date(), 'yyyy-MM-dd') });
-      // Create first payment
-      await db.planPayments.add({ planId: planId as number, expectedDate: calcNextCharge(), status: 'pendente', value });
-      toast.success('Plano criado! Redirecionando para pagamento...');
-      navigate(`/planos/checkout/${planId}`);
-    }
+    try {
+      if (isEdit) {
+        await updatePlan.mutateAsync({ id: Number(id), ...data });
+        toast.success('Plano atualizado!');
+        navigate(-1);
+      } else {
+        const newPlan = await createPlan.mutateAsync({ ...data, createdAt: format(new Date(), 'yyyy-MM-dd') } as any);
+        await createPlanPayment.mutateAsync({ planId: newPlan.id!, expectedDate: calcNextCharge(), status: 'pendente', value });
+        toast.success('Plano criado! Redirecionando para pagamento...');
+        navigate(`/planos/checkout/${newPlan.id}`);
+      }
+    } catch { toast.error('Erro ao salvar plano'); }
   };
 
   const client = clients.find(c => c.id === clientId);
@@ -180,7 +182,7 @@ export default function PlanFormPage() {
             <Textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Apenas visível para você..." />
           </div>
 
-          <Button type="submit" className="w-full h-12 font-semibold">{isEdit ? 'Salvar Alterações' : 'Criar Plano'}</Button>
+          <Button type="submit" className="w-full h-12 font-semibold" disabled={createPlan.isPending || updatePlan.isPending}>{isEdit ? 'Salvar Alterações' : 'Criar Plano'}</Button>
         </form>
 
         {/* Payment History */}

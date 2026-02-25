@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,15 +9,27 @@ import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/format';
 import { format, parseISO, startOfMonth, subDays, subMonths } from 'date-fns';
 
+import { useOrders, useUpdateOrder } from '@/hooks/useOrders';
+import { useProducts } from '@/hooks/useProducts';
+
 export default function OrdersPage() {
   const [ordersPeriod, setOrdersPeriod] = useState<'semanal' | 'mensal' | '30dias'>('mensal');
 
-  const orders = useLiveQuery(() => db.orders.reverse().toArray()) ?? [];
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  // React Query hooks
+  const { data: allOrders = [] } = useOrders();
+  const { data: products = [] } = useProducts();
+  const updateOrderMutation = useUpdateOrder();
+
+  // Orders sorted by most recent
+  const orders = [...allOrders].reverse();
 
   const updateStatus = async (id: number, status: 'pago' | 'cancelado') => {
-    await db.orders.update(id, { status });
-    toast.success(`Pedido ${status === 'pago' ? 'marcado como pago' : 'cancelado'}!`);
+    try {
+      await updateOrderMutation.mutateAsync({ id, status });
+      toast.success(`Pedido ${status === 'pago' ? 'marcado como pago' : 'cancelado'}!`);
+    } catch {
+      toast.error('Erro ao atualizar pedido');
+    }
   };
 
   const statusColor = (s: string) => {

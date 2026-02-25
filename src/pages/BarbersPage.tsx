@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { AppLayout } from '@/components/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,12 +12,30 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import type { Barber, BarberItemCommission } from '@/types';
 
+import { useBarbers, useCreateBarber, useUpdateBarber, useDeleteBarber } from '@/hooks/useBarbers';
+import { useServiceItems } from '@/hooks/useServiceItems';
+import { useProducts } from '@/hooks/useProducts';
+import {
+  useBarberCommissions,
+  useDeleteBarberCommissionsByBarber,
+  useBulkCreateBarberCommissions,
+} from '@/hooks/useBarberCommissions';
+
 export default function BarbersPage() {
   const navigate = useNavigate();
-  const barbers = useLiveQuery(() => db.barbers.toArray()) ?? [];
-  const serviceItems = useLiveQuery(() => db.serviceItems.toArray()) ?? [];
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
-  const allCommissions = useLiveQuery(() => db.barberItemCommissions.toArray()) ?? [];
+
+  // React Query hooks
+  const { data: barbers = [] } = useBarbers();
+  const { data: serviceItems = [] } = useServiceItems();
+  const { data: products = [] } = useProducts();
+  const { data: allCommissions = [] } = useBarberCommissions();
+
+  // Mutations
+  const createBarberMutation = useCreateBarber();
+  const updateBarberMutation = useUpdateBarber();
+  const deleteBarberMutation = useDeleteBarber();
+  const deleteCommissionsByBarberMutation = useDeleteBarberCommissionsByBarber();
+  const bulkCreateCommissionsMutation = useBulkCreateBarberCommissions();
 
   const [editing, setEditing] = useState<Barber | null>(null);
   const [form, setForm] = useState({ name: '', nickname: '', whatsapp: '', defaultCommission: 50 });
@@ -34,15 +50,15 @@ export default function BarbersPage() {
     setShowForm(false);
   };
 
-  const startEdit = async (barber: Barber) => {
+  const startEdit = (barber: Barber) => {
     setForm({
       name: barber.name,
       nickname: barber.nickname,
       whatsapp: barber.whatsapp,
       defaultCommission: barber.defaultCommission,
     });
-    // Load item commissions
-    const comms = await db.barberItemCommissions.where('barberId').equals(barber.id!).toArray();
+    // Load item commissions from allCommissions
+    const comms = allCommissions.filter(c => c.barberId === barber.id);
     const map: Record<string, number | ''> = {};
     comms.forEach(c => { map[`${c.itemType}-${c.itemId}`] = c.percentage; });
     setItemCommissions(map);
@@ -56,54 +72,73 @@ export default function BarbersPage() {
       return;
     }
 
-    let barberId: number;
-    if (editing?.id) {
-      await db.barbers.update(editing.id, {
-        name: form.name,
-        nickname: form.nickname,
-        whatsapp: form.whatsapp,
-        defaultCommission: form.defaultCommission,
-      });
-      barberId = editing.id;
-    } else {
-      barberId = await db.barbers.add({
-        name: form.name,
-        nickname: form.nickname,
-        whatsapp: form.whatsapp,
-        defaultCommission: form.defaultCommission,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      }) as number;
-    }
+    try {
+      let barberId: number;
+      if (editing?.id) {
+        await updateBarberMutation.mutateAsync({
+          id: editing.id,
+          name: form.name,
+          nickname: form.nickname,
+          whatsapp: form.whatsapp,
+          defaultCommission: form.defaultCommission,
+        });
+        barberId = editing.id;
+      } else {
+        const newBarber = await createBarberMutation.mutateAsync({
+          name: form.name,
+          nickname: form.nickname,
+          whatsapp: form.whatsapp,
+          defaultCommission: form.defaultCommission,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        });
+        barberId = newBarber.id!;
+      }
 
-    // Save item commissions
-    await db.barberItemCommissions.where('barberId').equals(barberId).delete();
-    const newComms: Omit<BarberItemCommission, 'id'>[] = [];
-    for (const [key, val] of Object.entries(itemCommissions)) {
-      if (val === '' || val === undefined) continue;
-      const [type, id] = key.split('-');
-      newComms.push({
-        barberId,
-        itemId: Number(id),
-        itemType: type as 'service' | 'product',
-        percentage: Number(val),
-      });
-    }
-    if (newComms.length > 0) await db.barberItemCommissions.bulkAdd(newComms);
+      // Save item commissions: delete existing, then bulk create new
+      await deleteCommissionsByBarberMutation.mutateAsync(barberId);
+      const newComms: Omit<BarberItemCommission, 'id'>[] = [];
+      for (const [key, val] of Object.entries(itemCommissions)) {
+        if (val === '' || val === undefined) continue;
+        const [type, id] = key.split('-');
+        newComms.push({
+          barberId,
+          itemId: Number(id),
+          itemType: type as 'service' | 'product',
+          percentage: Number(val),
+        });
+      }
+      if (newComms.length > 0) {
+        await bulkCreateCommissionsMutation.mutateAsync(newComms);
+      }
 
-    toast.success(editing ? 'Barbeiro atualizado!' : 'Barbeiro cadastrado!');
-    resetForm();
+      toast.success(editing ? 'Barbeiro atualizado!' : 'Barbeiro cadastrado!');
+      resetForm();
+    } catch {
+      toast.error('Erro ao salvar barbeiro');
+    }
   };
 
   const handleDelete = async (id: number) => {
-    await db.barbers.delete(id);
-    await db.barberItemCommissions.where('barberId').equals(id).delete();
-    toast.success('Barbeiro removido!');
+    try {
+      await deleteBarberMutation.mutateAsync(id);
+      await deleteCommissionsByBarberMutation.mutateAsync(id);
+      toast.success('Barbeiro removido!');
+    } catch {
+      toast.error('Erro ao remover barbeiro');
+    }
   };
 
   const toggleActive = async (barber: Barber) => {
-    await db.barbers.update(barber.id!, { isActive: !barber.isActive });
-    toast.success(barber.isActive ? 'Barbeiro desativado' : 'Barbeiro ativado');
+    try {
+      await updateBarberMutation.mutateAsync({
+        id: barber.id!,
+        isActive: !barber.isActive,
+      });
+      toast.success(barber.isActive ? 'Barbeiro desativado' : 'Barbeiro ativado');
+    } catch {
+      toast.error('Erro ao atualizar status');
+    }
   };
 
   const getBarberCommissions = (barberId: number) =>

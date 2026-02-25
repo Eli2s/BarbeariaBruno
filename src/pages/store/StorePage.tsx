@@ -1,24 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { PublicLayout } from '@/components/PublicLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search, ShoppingCart, Package } from 'lucide-react';
-import { useEffect } from 'react';
-import { seedDatabase } from '@/db/seed';
+
+import { useProducts } from '@/hooks/useProducts';
 
 export default function StorePage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  useEffect(() => { seedDatabase(); }, []);
-
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
+  const { data: products = [] } = useProducts();
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
 
   const filtered = products.filter(p => {

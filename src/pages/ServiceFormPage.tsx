@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,14 +17,33 @@ import { sendCashbackMessage, sendServiceConfirmation } from '@/lib/whatsappApi'
 import { phoneMask } from '@/lib/format';
 import type { Cashback } from '@/types';
 
+import { useClients, useCreateClient } from '@/hooks/useClients';
+import { useProducts } from '@/hooks/useProducts';
+import { useServiceItems } from '@/hooks/useServiceItems';
+import { useBarbers } from '@/hooks/useBarbers';
+import { usePlans } from '@/hooks/usePlans';
+import { useCashbacks, useCreateCashback, useUpdateCashback } from '@/hooks/useCashbacks';
+import { useCreateService } from '@/hooks/useServices';
+import { useBarberCommissions } from '@/hooks/useBarberCommissions';
+import * as barbersApi from '@/api/barbers';
+
 const PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito'];
 
 export default function ServiceFormPage() {
   const navigate = useNavigate();
-  const clients = useLiveQuery(() => db.clients.toArray()) ?? [];
-  const products = useLiveQuery(() => db.products.toArray()) ?? [];
-  const serviceItems = useLiveQuery(() => db.serviceItems.toArray()) ?? [];
-  const barbers = useLiveQuery(() => db.barbers.filter(b => b.isActive).toArray()) ?? [];
+
+  // React Query hooks for data fetching
+  const { data: clients = [] } = useClients();
+  const { data: products = [] } = useProducts();
+  const { data: serviceItems = [] } = useServiceItems();
+  const { data: allBarbers = [] } = useBarbers();
+  const barbers = allBarbers.filter(b => b.isActive);
+
+  // Mutations
+  const createClientMutation = useCreateClient();
+  const createServiceMutation = useCreateService();
+  const createCashbackMutation = useCreateCashback();
+  const updateCashbackMutation = useUpdateCashback();
 
   const [clientId, setClientId] = useState<number | null>(null);
   const [clientSearch, setClientSearch] = useState('');
@@ -53,23 +70,43 @@ export default function ServiceFormPage() {
   const [activeCashback, setActiveCashback] = useState<Cashback | null>(null);
   const [cashbackDiscount, setCashbackDiscount] = useState(0);
 
+  // Fetch plans & cashbacks for selected client
+  const { data: clientPlans = [] } = usePlans(clientId ?? undefined);
+  const { data: clientCashbacks = [] } = useCashbacks(clientId ?? undefined);
+
+  // Fetch commissions for selected barber
+  const barberIdNum = barberId ? Number(barberId) : undefined;
+  const { data: barberCommissions = [] } = useBarberCommissions(barberIdNum);
+
+  // Set active plan when client changes
   useEffect(() => {
-    if (clientId) {
-      db.plans.where('clientId').equals(clientId).and(p => p.status === 'ativo').first().then(p => setActivePlan(p ?? null));
-      // Check active cashback
-      db.cashbacks.where('clientId').equals(clientId).and(c => c.status === 'ativo').first().then(cb => {
-        if (cb && new Date(cb.expirationDate) > new Date()) {
-          setActiveCashback(cb);
-        } else {
-          setActiveCashback(null);
-          if (cb) db.cashbacks.update(cb.id!, { status: 'expirado' });
+    if (clientId && clientPlans.length > 0) {
+      const plan = clientPlans.find(p => p.status === 'ativo');
+      setActivePlan(plan ?? null);
+    } else {
+      setActivePlan(null);
+    }
+  }, [clientId, clientPlans]);
+
+  // Set active cashback when client changes
+  useEffect(() => {
+    if (clientId && clientCashbacks.length > 0) {
+      const cb = clientCashbacks.find(c => c.status === 'ativo' && new Date(c.expirationDate) > new Date());
+      if (cb) {
+        setActiveCashback(cb);
+      } else {
+        setActiveCashback(null);
+        // Expire any outdated cashbacks
+        const expired = clientCashbacks.find(c => c.status === 'ativo' && new Date(c.expirationDate) <= new Date());
+        if (expired) {
+          updateCashbackMutation.mutate({ id: expired.id!, status: 'expirado' });
         }
-      });
+      }
     } else {
       setActiveCashback(null);
       setCashbackDiscount(0);
     }
-  }, [clientId]);
+  }, [clientId, clientCashbacks]);
 
   // Auto-calculate total with cashback
   useEffect(() => {
@@ -138,39 +175,44 @@ export default function ServiceFormPage() {
 
   const handleSaveQuickClient = async () => {
     if (!validateQuickForm()) return;
-    const id = await db.clients.add({
-      name: quickName.trim(),
-      nickname: '',
-      whatsapp: quickWhatsapp.replace(/\D/g, ''),
-      tags: [],
-      createdAt: new Date().toISOString(),
-    });
-    setClientId(id as number);
-    setClientSearch('');
-    setShowQuickForm(false);
-    setShowClientList(false);
-    toast.success(`Cliente "${quickName.trim()}" cadastrado!`);
+    try {
+      const newClient = await createClientMutation.mutateAsync({
+        name: quickName.trim(),
+        nickname: '',
+        whatsapp: quickWhatsapp.replace(/\D/g, ''),
+        tags: [],
+        createdAt: new Date().toISOString(),
+      });
+      setClientId(newClient.id!);
+      setClientSearch('');
+      setShowQuickForm(false);
+      setShowClientList(false);
+      toast.success(`Cliente "${quickName.trim()}" cadastrado!`);
+    } catch {
+      toast.error('Erro ao cadastrar cliente');
+    }
   };
 
-  // Calculate commission for a barber
-  const calculateCommission = async (barberIdNum: number) => {
-    const barber = await db.barbers.get(barberIdNum);
+  // Calculate commission for a barber using API data
+  const calculateCommission = async (bId: number) => {
+    const barber = allBarbers.find(b => b.id === bId);
     if (!barber) return { commission: 0, shopValue: totalValue };
 
+    // Use barberCommissions already fetched via React Query
     let totalCommission = 0;
 
     for (const svc of selectedServices) {
-      const specific = await db.barberItemCommissions
-        .where({ barberId: barberIdNum, itemId: svc.id, itemType: 'service' })
-        .first();
+      const specific = barberCommissions.find(
+        c => c.barberId === bId && c.itemId === svc.id && c.itemType === 'service'
+      );
       const pct = specific ? specific.percentage : barber.defaultCommission;
       totalCommission += svc.price * (pct / 100);
     }
 
     for (const prod of selectedProducts) {
-      const specific = await db.barberItemCommissions
-        .where({ barberId: barberIdNum, itemId: prod.productId, itemType: 'product' })
-        .first();
+      const specific = barberCommissions.find(
+        c => c.barberId === bId && c.itemId === prod.productId && c.itemType === 'product'
+      );
       const pct = specific ? specific.percentage : barber.defaultCommission;
       totalCommission += prod.unitPrice * prod.quantity * (pct / 100);
     }
@@ -188,57 +230,11 @@ export default function ServiceFormPage() {
       return;
     }
 
-    const barberIdNum = Number(barberId);
-    const { commission, shopValue } = await calculateCommission(barberIdNum);
+    const barberIdNumVal = Number(barberId);
+    const { commission, shopValue } = await calculateCommission(barberIdNumVal);
 
-    const serviceId = await db.services.add({
-      clientId,
-      date: dateTime,
-      services: selectedServices.map(s => s.name),
-      products: selectedProducts,
-      totalValue: totalValue || 0,
-      paymentMethod,
-      observation,
-      usedPlanCredit: usePlanCredit,
-      barberId: barberIdNum,
-      barberCommission: commission,
-      shopValue,
-      cashbackApplied: cashbackDiscount,
-      cashbackPercentage: activeCashback?.percentage ?? 0,
-    });
-
-    // Mark cashback as used
-    if (activeCashback) {
-      await db.cashbacks.update(activeCashback.id!, { status: 'usado' });
-    }
-
-    // Activate new cashback
-    if (activateCashback && clientId) {
-      const expDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
-      await db.cashbacks.add({
-        clientId,
-        percentage: cashbackPercentage,
-        startDate: format(new Date(), 'yyyy-MM-dd'),
-        expirationDate: expDate,
-        status: 'ativo',
-        serviceId: serviceId as number,
-      });
-
-      // Send WhatsApp message
-      const client = clients.find(c => c.id === clientId);
-      if (client?.whatsapp) {
-        sendCashbackMessage(client.name, cashbackPercentage, expDate, client.whatsapp)
-          .then(result => result.success ? toast.success('Cashback enviado via WhatsApp!') : null)
-          .catch(() => {});
-      }
-    }
-
-    toast.success('Atendimento registrado!');
-
-    // Enviar confirmação WhatsApp (fire-and-forget)
-    const registeredClient = clients.find(c => c.id === clientId);
-    if (registeredClient?.whatsapp) {
-      const savedService = {
+    try {
+      const newService = await createServiceMutation.mutateAsync({
         clientId,
         date: dateTime,
         services: selectedServices.map(s => s.name),
@@ -247,22 +243,72 @@ export default function ServiceFormPage() {
         paymentMethod,
         observation,
         usedPlanCredit: usePlanCredit,
-        barberId: barberIdNum,
+        barberId: barberIdNumVal,
         barberCommission: commission,
-      };
-      const barber = barbers.find(b => b.id === barberIdNum);
-      sendServiceConfirmation(registeredClient, savedService as any, barber?.nickname || barber?.name)
-        .then(result => {
-          if (result.success) {
-            toast.success('Confirmação enviada via WhatsApp! 📱');
-          } else if (result.errorMessage) {
-            toast.warning('WhatsApp não enviado', { description: result.errorMessage });
-          }
-        })
-        .catch(() => {});
-    }
+        shopValue,
+        cashbackApplied: cashbackDiscount,
+        cashbackPercentage: activeCashback?.percentage ?? 0,
+      } as any);
 
-    navigate('/');
+      // Mark cashback as used
+      if (activeCashback) {
+        await updateCashbackMutation.mutateAsync({ id: activeCashback.id!, status: 'usado' });
+      }
+
+      // Activate new cashback
+      if (activateCashback && clientId) {
+        const expDate = format(addDays(new Date(), 30), 'yyyy-MM-dd');
+        await createCashbackMutation.mutateAsync({
+          clientId,
+          percentage: cashbackPercentage,
+          startDate: format(new Date(), 'yyyy-MM-dd'),
+          expirationDate: expDate,
+          status: 'ativo',
+          serviceId: newService.id as number,
+        });
+
+        // Send WhatsApp message
+        const client = clients.find(c => c.id === clientId);
+        if (client?.whatsapp) {
+          sendCashbackMessage(client.name, cashbackPercentage, expDate, client.whatsapp)
+            .then(result => result.success ? toast.success('Cashback enviado via WhatsApp!') : null)
+            .catch(() => {});
+        }
+      }
+
+      toast.success('Atendimento registrado!');
+
+      // Enviar confirmação WhatsApp (fire-and-forget)
+      const registeredClient = clients.find(c => c.id === clientId);
+      if (registeredClient?.whatsapp) {
+        const savedService = {
+          clientId,
+          date: dateTime,
+          services: selectedServices.map(s => s.name),
+          products: selectedProducts,
+          totalValue: totalValue || 0,
+          paymentMethod,
+          observation,
+          usedPlanCredit: usePlanCredit,
+          barberId: barberIdNumVal,
+          barberCommission: commission,
+        };
+        const barber = barbers.find(b => b.id === barberIdNumVal);
+        sendServiceConfirmation(registeredClient, savedService as any, barber?.nickname || barber?.name)
+          .then(result => {
+            if (result.success) {
+              toast.success('Confirmação enviada via WhatsApp! 📱');
+            } else if (result.errorMessage) {
+              toast.warning('WhatsApp não enviado', { description: result.errorMessage });
+            }
+          })
+          .catch(() => {});
+      }
+
+      navigate('/');
+    } catch {
+      toast.error('Erro ao registrar atendimento');
+    }
   };
 
   const selectedClient = clients.find(c => c.id === clientId);
