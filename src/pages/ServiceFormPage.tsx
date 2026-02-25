@@ -384,8 +384,11 @@ export default function ServiceFormPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-xs">WhatsApp * (com DDD)</Label>
+                      <Label className="text-xs">WhatsApp * <span className="text-muted-foreground text-[10px]">(11 dígitos com DDD)</span></Label>
                       <Input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={15}
                         value={quickWhatsapp}
                         onChange={e => {
                           const masked = phoneMask(e.target.value);

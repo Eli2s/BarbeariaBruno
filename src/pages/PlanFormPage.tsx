@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useClients } from '@/hooks/useClients';
-import { usePlan, useCreatePlan, useUpdatePlan } from '@/hooks/usePlans';
+import { usePlan, useCreatePlan, useUpdatePlan, usePlans } from '@/hooks/usePlans';
 import { usePlanPayments, useCreatePlanPayment } from '@/hooks/usePlanPayments';
 import { useServices } from '@/hooks/useServices';
 import { analyzeClient } from '@/lib/analytics';

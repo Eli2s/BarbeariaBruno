@@ -47,7 +47,7 @@ export default function LoginPage() {
           <Button type="submit" className="w-full h-12 font-semibold" disabled={pin.length < 4}>
             Entrar
           </Button>
-          <p className="text-muted-foreground text-[10px] text-center">PIN padrão: 1234</p>
+          {/* <p className="text-muted-foreground text-[10px] text-center">PIN padrão: 1234</p> */}
         </form>
       </div>
     </div>

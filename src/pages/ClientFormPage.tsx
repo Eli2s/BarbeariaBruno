@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useClient, useCreateClient, useUpdateClient } from '@/hooks/useClients';
 import { AppLayout } from '@/components/AppLayout';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Upload, X, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { phoneMask } from '@/lib/format';
 
 export default function ClientFormPage() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function ClientFormPage() {
   const { data: existingClient } = useClient(id ? Number(id) : undefined);
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
@@ -26,23 +28,55 @@ export default function ClientFormPage() {
     if (existingClient) {
       setName(existingClient.name);
       setNickname(existingClient.nickname);
-      setWhatsapp(existingClient.whatsapp);
+      setWhatsapp(existingClient.whatsapp ? phoneMask(existingClient.whatsapp) : '');
       setPhoto(existingClient.photo || '');
       setTags(existingClient.tags.join(', '));
     }
   }, [existingClient]);
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione um arquivo de imagem');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx. 2MB)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhoto(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhoto('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSave = async () => {
-    if (!name.trim() || !whatsapp.trim()) {
-      toast.error('Nome e WhatsApp são obrigatórios');
+    if (!name.trim()) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+
+    const digits = whatsapp.replace(/\D/g, '');
+    if (digits.length !== 11) {
+      toast.error('WhatsApp deve ter exatamente 11 dígitos (DDD + número)');
       return;
     }
 
     const data = {
       name: name.trim(),
       nickname: nickname.trim() || name.trim(),
-      whatsapp: whatsapp.trim(),
-      photo: photo.trim() || undefined,
+      whatsapp: digits,
+      photo: photo || undefined,
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
       createdAt: isEditing ? existingClient!.createdAt : new Date().toISOString(),
     };
@@ -70,6 +104,49 @@ export default function ClientFormPage() {
         </div>
 
         <div className="space-y-3">
+          {/* Foto - Upload de arquivo */}
+          <div className="space-y-2">
+            <Label>Foto</Label>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-secondary border-2 border-dashed border-border flex items-center justify-center overflow-hidden shrink-0">
+                {photo ? (
+                  <img src={photo} alt="Foto" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={28} className="text-muted-foreground/40" />
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={13} /> {photo ? 'Trocar Foto' : 'Enviar Foto'}
+                </Button>
+                {photo && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-xs text-destructive hover:text-destructive"
+                    onClick={handleRemovePhoto}
+                  >
+                    <X size={13} /> Remover
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-1">
             <Label>Nome completo *</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nome do cliente" />
@@ -79,12 +156,20 @@ export default function ClientFormPage() {
             <Input value={nickname} onChange={e => setNickname(e.target.value)} placeholder="Apelido" />
           </div>
           <div className="space-y-1">
-            <Label>WhatsApp *</Label>
-            <Input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="11999887766" />
-          </div>
-          <div className="space-y-1">
-            <Label>Foto (URL)</Label>
-            <Input value={photo} onChange={e => setPhoto(e.target.value)} placeholder="https://..." />
+            <Label>WhatsApp * <span className="text-muted-foreground text-[10px]">(11 dígitos com DDD)</span></Label>
+            <Input
+              type="tel"
+              inputMode="numeric"
+              maxLength={15}
+              value={whatsapp}
+              onChange={e => setWhatsapp(phoneMask(e.target.value))}
+              placeholder="(11) 99999-9999"
+            />
+            {whatsapp && whatsapp.replace(/\D/g, '').length !== 11 && (
+              <p className="text-[10px] text-amber-500 mt-0.5">
+                {whatsapp.replace(/\D/g, '').length}/11 dígitos
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Tags (separadas por vírgula)</Label>

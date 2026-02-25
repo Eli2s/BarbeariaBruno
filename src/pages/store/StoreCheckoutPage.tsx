@@ -9,6 +9,7 @@ import { ArrowLeft, CreditCard, Smartphone, QrCode, Package, CheckCircle, Send }
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { openWhatsApp } from '@/lib/whatsapp';
+import { phoneMask } from '@/lib/format';
 
 import { useProducts, useUpdateProduct } from '@/hooks/useProducts';
 import { useCreateOrder } from '@/hooks/useOrders';
@@ -44,7 +45,8 @@ export default function StoreCheckoutPage() {
 
   const handleInfoNext = () => {
     if (!name.trim()) { toast.error('Informe seu nome'); return; }
-    if (!whatsapp.trim() || whatsapp.length < 10) { toast.error('Informe um WhatsApp válido'); return; }
+    const digits = whatsapp.replace(/\D/g, '');
+    if (digits.length !== 11) { toast.error('WhatsApp deve ter 11 dígitos (DDD + número)'); return; }
     setStep('payment');
   };
 
@@ -187,13 +189,18 @@ export default function StoreCheckoutPage() {
                 <Input value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome" />
               </div>
               <div className="space-y-1">
-                <Label>WhatsApp *</Label>
+                <Label>WhatsApp * <span className="text-muted-foreground text-[10px]">(11 dígitos com DDD)</span></Label>
                 <Input
-                  value={whatsapp}
-                  onChange={e => setWhatsapp(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                  placeholder="11999887766"
+                  type="tel"
                   inputMode="numeric"
+                  maxLength={15}
+                  value={whatsapp}
+                  onChange={e => setWhatsapp(phoneMask(e.target.value))}
+                  placeholder="(11) 99999-9999"
                 />
+                {whatsapp && whatsapp.replace(/\D/g, '').length !== 11 && (
+                  <p className="text-[10px] text-amber-500">{whatsapp.replace(/\D/g, '').length}/11 dígitos</p>
+                )}
               </div>
               <div className="space-y-1">
                 <Label>Quantidade</Label>

@@ -9,10 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  ArrowLeft, CheckCircle, XCircle, Eye, EyeOff, ExternalLink,
+  ArrowLeft, XCircle, Eye, EyeOff, ExternalLink,
   ChevronDown, ChevronUp, MessageCircle, Save, Info, Wifi,
   AlertTriangle, Link, Unlink, RefreshCw, Loader2, ShieldCheck,
-  Clock
+  Clock, CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getWhatsAppConfig, saveWhatsAppConfig, sendWhatsAppMessage } from '@/lib/whatsappApi';
@@ -610,32 +610,6 @@ export default function WhatsAppSettingsPage() {
               </Button>
             </div>
           )}
-        </Card>
-
-        {/* ── AUTOMATED MESSAGES ────────────────────────────────────── */}
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <MessageCircle size={14} />
-              Mensagens automáticas enviadas
-            </h2>
-            <div className="space-y-2">
-              {[
-                { label: '✂️ Confirmação de atendimento', desc: 'Enviada ao registrar novo atendimento' },
-                { label: '✅ Confirmação de pagamento', desc: 'Enviada ao confirmar pagamento de plano' },
-                { label: '🎁 Cashback ativado', desc: 'Enviada ao ativar cashback para o cliente' },
-                { label: '⏰ Lembrete de cashback', desc: 'Enviada quando cashback está próximo de expirar' },
-              ].map(item => (
-                <div key={item.label} className="flex items-start gap-2 p-2 rounded-lg bg-secondary/30">
-                  <CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs font-medium">{item.label}</p>
-                    <p className="text-xs text-muted-foreground">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
         </Card>
       </div>
     </AppLayout>

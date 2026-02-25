@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { phoneMask } from '@/lib/format';
 import type { Barber, BarberItemCommission } from '@/types';
 
 import { useBarbers, useCreateBarber, useUpdateBarber, useDeleteBarber } from '@/hooks/useBarbers';
@@ -72,6 +73,14 @@ export default function BarbersPage() {
       return;
     }
 
+    if (form.whatsapp) {
+      const digits = form.whatsapp.replace(/\D/g, '');
+      if (digits.length !== 11) {
+        toast.error('WhatsApp deve ter exatamente 11 dígitos (DDD + número)');
+        return;
+      }
+    }
+
     try {
       let barberId: number;
       if (editing?.id) {
@@ -79,7 +88,7 @@ export default function BarbersPage() {
           id: editing.id,
           name: form.name,
           nickname: form.nickname,
-          whatsapp: form.whatsapp,
+          whatsapp: form.whatsapp.replace(/\D/g, ''),
           defaultCommission: form.defaultCommission,
         });
         barberId = editing.id;
@@ -87,7 +96,7 @@ export default function BarbersPage() {
         const newBarber = await createBarberMutation.mutateAsync({
           name: form.name,
           nickname: form.nickname,
-          whatsapp: form.whatsapp,
+          whatsapp: form.whatsapp.replace(/\D/g, ''),
           defaultCommission: form.defaultCommission,
           isActive: true,
           createdAt: new Date().toISOString(),
@@ -171,8 +180,15 @@ export default function BarbersPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">WhatsApp</Label>
-                  <Input value={form.whatsapp} onChange={e => setForm({ ...form, whatsapp: e.target.value })} placeholder="11999887766" />
+                  <Label className="text-xs">WhatsApp <span className="text-muted-foreground text-[10px]">(11 dígitos)</span></Label>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={15}
+                    value={form.whatsapp}
+                    onChange={e => setForm({ ...form, whatsapp: phoneMask(e.target.value) })}
+                    placeholder="(11) 99999-9999"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Comissão Padrão (%) *</Label>
