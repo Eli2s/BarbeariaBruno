@@ -48,23 +48,20 @@ export default function MessageTemplatesPage() {
     setLoadingStatus(true);
     setQrCodeBase64(null);
     try {
-      // O WhatsMiau pode retornar no endpoint /connect/:id algo como:
-      // se está offline: { base64: 'data...', count: 1 }
-      // se está conectado: { instance: { status: 'open', ... } } ou { connected: true, message: '...' }
       const response = await apiGet<any>('/admin/whatsapp/qrcode');
       
-      if (response?.base64) {
+      if (response?.status === 'CONNECTED') {
+        setConnectionStatus('CONNECTED');
+      } else if (response?.base64) {
         setQrCodeBase64(response.base64);
         setConnectionStatus('DISCONNECTED');
-      } else if (response?.instance?.state === 'open' || response?.instance?.status === 'open' || response?.state === 'open' || response?.connected) {
-        setConnectionStatus('CONNECTED');
       } else {
+        // Desconectado sem QR code — pode ser que a instância precise ser criada
         setConnectionStatus('DISCONNECTED');
       }
     } catch (error: any) {
       console.error(error);
       setConnectionStatus('ERROR');
-      // Toast silenciado ao montar a tela, mostre em caso de botão
     } finally {
       setLoadingStatus(false);
     }
