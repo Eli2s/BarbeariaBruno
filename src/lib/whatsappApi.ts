@@ -1,49 +1,13 @@
 /**
- * WhatsApp Cloud API (Meta) — Serviço de envio
- *
- * Chama diretamente a API graph.facebook.com sem backend intermediário.
- * As credenciais ficam armazenadas no backend (tabela `settings`).
+ * API do Frontend para disparo de mensagens pelo WhatsMiau do Backend.
  */
 
-import { fetchSetting, upsertSetting } from '@/api/settings';
 import { fetchMessageTemplates } from '@/api/messageTemplates';
-import { format } from 'date-fns';
+import { apiPost } from '@/api/apiClient';
+import { format, addDays } from 'date-fns';
 import type { WhatsAppConfig, Client, Service, Plan } from '@/types';
 
-const SETTINGS_KEY = 'whatsapp_config';
-const META_API_VERSION = 'v19.0';
-
-// ──────────────────────────────────────────────────
-// Config helpers
-// ──────────────────────────────────────────────────
-
-export async function getWhatsAppConfig(): Promise<WhatsAppConfig | null> {
-  try {
-    const row = await fetchSetting(SETTINGS_KEY);
-    if (!row) return null;
-    return JSON.parse(row.value) as WhatsAppConfig;
-  } catch {
-    return null;
-  }
-}
-
-export async function saveWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
-  await upsertSetting(SETTINGS_KEY, JSON.stringify(config));
-}
-
-export async function isWhatsAppConfigured(): Promise<boolean> {
-  const config = await getWhatsAppConfig();
-  return !!(
-    config?.enabled &&
-    config.phoneNumberId?.trim() &&
-    config.accessToken?.trim()
-  );
-}
-
-// ──────────────────────────────────────────────────
-// Envio via Meta Cloud API
-// ──────────────────────────────────────────────────
-
+// Função para limpar número do telefone (somente números e adiciona 55)
 function cleanPhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   return digits.startsWith('55') ? digits : `55${digits}`;
@@ -56,68 +20,30 @@ export interface WhatsAppSendResult {
 }
 
 /**
- * Traduz códigos de erro da Meta para mensagens em português claras.
- */
-export function getWhatsAppErrorHint(code: number): string {
-  switch (code) {
-    case 131030:
-      return 'Número não está na lista de destinatários permitidos. No modo de teste, adicione o número em Meta for Developers → WhatsApp → API Setup → "To" phone numbers.';
-    case 190:
-      return 'Access Token inválido ou expirado. Gere um novo token no painel da Meta e atualize nas configurações.';
-    case 131047:
-      return 'Mensagem fora da janela de 24h. Use um template de mensagem aprovado pela Meta.';
-    case 131026:
-      return 'Número de destinatário inválido. Verifique se o número está correto com o código do país (55).';
-    default:
-      return `Erro na API Meta (código ${code}). Verifique as configurações do WhatsApp.`;
-  }
-}
-
-/**
- * Envia uma mensagem de texto simples via Meta WhatsApp Cloud API.
- * Retorna objeto com `{ success, errorCode?, errorMessage? }`.
+ * Envia uma mensagem de texto via WhatsMiau do backend.
  */
 export async function sendWhatsAppMessage(
   phone: string,
   message: string
 ): Promise<WhatsAppSendResult> {
-  const config = await getWhatsAppConfig();
-
-  if (!config?.enabled || !config.phoneNumberId || !config.accessToken) {
-    console.info('[WhatsApp] Integração não configurada — mensagem não enviada.');
-    return { success: false, errorMessage: 'Integração não configurada.' };
+  if (!phone || !message) {
+    return { success: false, errorMessage: 'Telefone e mensagem são obrigatórios.' };
   }
 
-  const url = `https://graph.facebook.com/${META_API_VERSION}/${config.phoneNumberId}/messages`;
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhone(phone),
-        type: 'text',
-        text: { body: message, preview_url: false },
-      }),
+    const result = await apiPost<any>('/admin/whatsapp/send-text', {
+      phone: cleanPhone(phone),
+      message,
     });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      const errorCode: number | undefined = err?.error?.code;
-      const errorMessage = errorCode ? getWhatsAppErrorHint(errorCode) : (err?.error?.message || 'Erro desconhecido na API Meta.');
-      console.error('[WhatsApp] Erro na API Meta:', err);
-      return { success: false, errorCode, errorMessage };
+    if (result && result.success) {
+      return { success: true };
     }
 
-    return { success: true };
-  } catch (err) {
-    console.error('[WhatsApp] Falha ao conectar com a API Meta:', err);
-    return { success: false, errorMessage: 'Falha de conexão com a API Meta. Verifique sua internet.' };
+    return { success: false, errorMessage: result?.error || 'Erro desconhecido ao enviar mensagem.' };
+  } catch (err: any) {
+    console.error('[WhatsApp API] Falha ao enviar mensagem:', err);
+    return { success: false, errorMessage: 'Falha de comunicação com a API de mensagens.' };
   }
 }
 
@@ -186,14 +112,21 @@ export async function sendServiceConfirmation(
 ): Promise<WhatsAppSendResult> {
   if (!client.whatsapp) return { success: false, errorMessage: 'Cliente sem WhatsApp cadastrado.' };
 
-  const config = await getWhatsAppConfig();
-  const shopName = config?.shopName || 'Bruno Barbearia';
+  const shopName = 'Bruno Barbearia'; // Deixe default por agora
 
   const servicesText = service.services.join(', ') || 'Serviço';
   const valor = service.totalValue.toFixed(2).replace('.', ',');
   const dataFormatada = format(new Date(service.date), 'dd/MM/yyyy \'às\' HH:mm');
 
-  const message = replaceVars(TEMPLATE_SERVICE_CONFIRMATION, {
+  // Fetch template from API
+  let template = TEMPLATE_SERVICE_CONFIRMATION;
+  try {
+    const templates = await fetchMessageTemplates();
+    const savedTemplate = templates.find(t => t.type === 'thank_you');
+    if (savedTemplate) template = savedTemplate.content;
+  } catch { /* use default */ }
+
+  const message = replaceVars(template, {
     nome: client.nickname || client.name,
     barbearia: shopName,
     servicos: servicesText,
@@ -215,13 +148,20 @@ export async function sendPaymentConfirmation(
 ): Promise<WhatsAppSendResult> {
   if (!client.whatsapp) return { success: false, errorMessage: 'Cliente sem WhatsApp cadastrado.' };
 
-  const config = await getWhatsAppConfig();
-  const shopName = config?.shopName || 'Bruno Barbearia';
+  const shopName = 'Bruno Barbearia';
 
   const valor = plan.value.toFixed(2).replace('.', ',');
   const proximaData = format(new Date(plan.nextCharge), 'dd/MM/yyyy');
 
-  const message = replaceVars(TEMPLATE_PAYMENT_CONFIRMATION, {
+  // Fetch template from API
+  let template = TEMPLATE_PAYMENT_CONFIRMATION;
+  try {
+    const templates = await fetchMessageTemplates();
+    const savedTemplate = templates.find(t => t.type === 'payment');
+    if (savedTemplate) template = savedTemplate.content;
+  } catch { /* use default */ }
+
+  const message = replaceVars(template, {
     nome: client.nickname || client.name,
     barbearia: shopName,
     plano: plan.name,
@@ -241,8 +181,7 @@ export async function sendCashbackMessage(
   expirationDate: string,
   phone: string
 ): Promise<WhatsAppSendResult> {
-  const config = await getWhatsAppConfig();
-  const shopName = config?.shopName || 'Bruno Barbearia';
+  const shopName = 'Bruno Barbearia';
 
   // Fetch template from API
   let template = TEMPLATE_CASHBACK_ACTIVATED;
@@ -271,8 +210,7 @@ export async function sendCashbackReminder(
   daysLeft: number,
   phone: string
 ): Promise<WhatsAppSendResult> {
-  const config = await getWhatsAppConfig();
-  const shopName = config?.shopName || 'Bruno Barbearia';
+  const shopName = 'Bruno Barbearia';
 
   // Fetch template from API
   let template = TEMPLATE_CASHBACK_REMINDER;

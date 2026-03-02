@@ -98,7 +98,7 @@ export interface Cashback {
 
 export interface MessageTemplate {
   id?: number;
-  type: 'cashback_activated' | 'cashback_reminder' | 'thank_you';
+  type: 'cashback_activated' | 'cashback_reminder' | 'thank_you' | 'payment';
   name: string;
   content: string;
 }
