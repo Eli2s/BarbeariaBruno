@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  ArrowLeft, Save, Send, Settings, QrCode, RefreshCw, MessageCircle, AlertTriangle, ShieldCheck, Loader2
+  ArrowLeft, Save, Send, Settings, QrCode, RefreshCw, MessageCircle, AlertTriangle, ShieldCheck, Loader2, LogOut
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MessageTemplate } from '@/types';
@@ -18,7 +18,7 @@ import {
   useMessageTemplates,
   useUpdateMessageTemplate,
 } from '@/hooks/useMessageTemplates';
-import { apiGet } from '@/api/apiClient';
+import { apiGet, apiDelete } from '@/api/apiClient';
 
 export default function MessageTemplatesPage() {
   const navigate = useNavigate();
@@ -35,6 +35,7 @@ export default function MessageTemplatesPage() {
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   // ── Load Data ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -63,9 +64,24 @@ export default function MessageTemplatesPage() {
     } catch (error: any) {
       console.error(error);
       setConnectionStatus('ERROR');
-      toast.error('Erro ao buscar status do WhatsApp. A instância pode não estar iniciada no backend.');
+      // Toast silenciado ao montar a tela, mostre em caso de botão
     } finally {
       setLoadingStatus(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar o WhatsApp?')) return;
+    setIsDisconnecting(true);
+    try {
+      await apiDelete('/admin/whatsapp/delete-instance');
+      toast.success('WhatsApp desconectado com sucesso.');
+      loadWhatsAppStatus();
+    } catch (error: any) {
+      console.error(error);
+      toast.error('Erro ao desconectar o WhatsApp.');
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -146,6 +162,12 @@ export default function MessageTemplatesPage() {
                         <div>
                           <p className="font-semibold text-green-700 text-lg">WhatsApp Conectado!</p>
                           <p className="text-xs text-muted-foreground">Sua API já está pronta para disparar mensagens.</p>
+                        </div>
+                        <div className="pt-2">
+                           <Button onClick={handleDisconnect} disabled={isDisconnecting} variant="destructive" className="gap-2">
+                             {isDisconnecting ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                             Desconectar WhatsApp
+                           </Button>
                         </div>
                      </div>
                   ) : qrCodeBase64 ? (
