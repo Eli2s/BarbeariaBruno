@@ -383,6 +383,35 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
     }
 });
 
+// ── DELETE /api/appointments/:id ─────────────────────────────────────────────
+// Admin exclui (hard delete) um agendamento
+router.delete('/:id', async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+
+    try {
+        const appointment = await prisma.appointment.delete({
+            where: { id },
+        });
+
+        // Tentar enviar notificação pelo WhatsApp (fire-and-forget)
+        if (appointment.status !== 'finalizado') {
+            try {
+                const dataHora = formatDateTime(appointment.dateTime);
+                const msg = `Olá ${appointment.clientName}. Seu agendamento para *${dataHora}* (${appointment.serviceItem}) foi removido da agenda. Caso tenha dúvidas, entre em contato conosco.`;
+                await whatsMiauService.sendText(appointment.clientPhone, msg);
+            } catch (waErr) {
+                console.warn('[Appointments] WhatsApp (delete) falhou:', waErr);
+            }
+        }
+
+        return res.json({ ok: true });
+    } catch (err: any) {
+        console.error('[Appointments] DELETE error:', err.message);
+        if (err.code === 'P2025') return res.status(404).json({ error: 'Agendamento não encontrado.' });
+        return res.status(500).json({ error: 'Erro ao excluir agendamento.' });
+    }
+});
+
 // --- Blocked Periods ---
 
 // GET /api/appointments/blocked-periods
