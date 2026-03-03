@@ -21,6 +21,8 @@ import OrdersPage from "./pages/OrdersPage";
 import StorePage from "./pages/store/StorePage";
 import StoreCheckoutPage from "./pages/store/StoreCheckoutPage";
 import WhatsAppOAuthCallbackPage from "./pages/WhatsAppOAuthCallbackPage";
+import AgendamentoPublicoPage from "./pages/AgendamentoPublicoPage";
+import AgendamentosAdminPage from "./pages/AgendamentosAdminPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +43,7 @@ const App = () => (
           <Route path="/loja" element={<StorePage />} />
           <Route path="/loja/checkout/:productId" element={<StoreCheckoutPage />} />
           <Route path="/whatsapp-oauth-callback" element={<WhatsAppOAuthCallbackPage />} />
+          <Route path="/agendar" element={<AgendamentoPublicoPage />} />
 
           {/* Protected Admin Routes */}
           <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
@@ -61,6 +64,7 @@ const App = () => (
           <Route path="/mensagens" element={<ProtectedRoute><MessageTemplatesPage /></ProtectedRoute>} />
           <Route path="/whatsapp-config" element={<ProtectedRoute><MessageTemplatesPage /></ProtectedRoute>} />
           <Route path="/configuracoes/whatsapp" element={<ProtectedRoute><MessageTemplatesPage /></ProtectedRoute>} />
+          <Route path="/agendamentos" element={<ProtectedRoute><AgendamentosAdminPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -130,6 +130,16 @@ export default function MenuPage() {
           </CardContent>
         </Card>
 
+        <Card className="cursor-pointer hover:bg-secondary/50 transition-colors" onClick={() => navigate('/agendamentos')}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Smartphone size={18} />
+            <div>
+              <p className="text-sm font-semibold">Agendamentos</p>
+              <p className="text-xs text-muted-foreground">Visualizar e gerenciar pedidos de horário</p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Store Link Card */}
         <Card className="border-primary/30 overflow-hidden">
           <CardContent className="p-4 space-y-3">
