@@ -1,15 +1,15 @@
 import { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, CreditCard, Package, Menu } from 'lucide-react';
+import { Home, Users, CreditCard, Package, Menu, CalendarCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DesktopSidebar } from './DesktopSidebar';
 import { DesktopHeader } from './DesktopHeader';
 
 const NAV_ITEMS = [
   { path: '/', icon: Home, label: 'Home' },
+  { path: '/agendamentos', icon: CalendarCheck, label: 'Agenda' },
   { path: '/clientes', icon: Users, label: 'Clientes' },
   { path: '/planos', icon: CreditCard, label: 'Planos' },
-  { path: '/produtos', icon: Package, label: 'Produtos' },
   { path: '/menu', icon: Menu, label: 'Menu' },
 ];
 

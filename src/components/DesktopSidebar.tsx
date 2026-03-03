@@ -3,12 +3,13 @@ import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 import {
   Home, Users, CreditCard, Package, Scissors, ShoppingBag,
-  MessageSquare, Settings, LogOut, Sparkles
+  MessageSquare, Settings, LogOut, Sparkles, CalendarCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const NAV_ITEMS = [
   { path: '/', icon: Home, label: 'Dashboard' },
+  { path: '/agendamentos', icon: CalendarCheck, label: 'Agendamentos' },
   { path: '/clientes', icon: Users, label: 'Clientes' },
   { path: '/planos', icon: CreditCard, label: 'Planos' },
   { path: '/produtos', icon: Package, label: 'Produtos' },

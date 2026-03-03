@@ -31,8 +31,17 @@ export const fetchAvailability = (date: string, barberId?: number) =>
         `/appointments/availability?date=${date}${barberId ? `&barberId=${barberId}` : ''}`
     );
 
+export const fetchAppointmentsByPhone = (phone: string) =>
+    apiGet<Appointment[]>(`/appointments/by-phone/${encodeURIComponent(phone)}`);
+
 export const createAppointment = (data: CreateAppointmentPayload) =>
     apiPost<Appointment>('/appointments', data);
+
+export const cancelAppointment = (id: number, clientPhone: string) =>
+    apiPost<Appointment>(`/appointments/${id}/cancel`, { clientPhone });
+
+export const rescheduleAppointment = (id: number, clientPhone: string, date: string, time: string) =>
+    apiPost<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
 
 export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado') =>
     apiPost<Appointment>(`/appointments/${id}/status`, { status });
