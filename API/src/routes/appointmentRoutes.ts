@@ -165,6 +165,26 @@ router.post('/', async (req: Request, res: Response) => {
             include: { barber: true },
         });
 
+        // Tentar registrar cliente também no banco geral caso não exista pelo WhatsApp
+        try {
+            const existingClient = await prisma.client.findFirst({
+                where: { whatsapp: clientPhone }
+            });
+
+            if (!existingClient) {
+                await prisma.client.create({
+                    data: {
+                        name: clientName,
+                        nickname: clientName.split(' ')[0], // Primeiro nome como nickname padrão
+                        whatsapp: clientPhone
+                    }
+                });
+            }
+        } catch (clientErr) {
+            console.error('[Appointments] Erro no auto-cadastro de cliente:', clientErr);
+            // Non-blocking: mesmo que falhe, não impede a criação do agendamento.
+        }
+
         const barberName = appointment.barber?.name || 'seu barbeiro';
 
         // Mensagem de confirmação direta para o cliente
