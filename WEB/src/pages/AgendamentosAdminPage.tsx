@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AppLayout } from '@/components/AppLayout';
 import { Calendar } from '@/components/ui/calendar';
@@ -19,6 +20,7 @@ import type { BlockedPeriod } from '@/types';
 import { updateAppointmentStatus } from '@/api/appointments';
 
 export default function AgendamentosAdminPage() {
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('dia');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -117,15 +119,14 @@ export default function AgendamentosAdminPage() {
     setCompleteLoading(true);
     try {
       await updateAppointmentStatus(completeAppt.id, 'finalizado');
-      toast.success('Atendimento finalizado com sucesso!');
-      await load();
+      toast.success('Redirecionando para o PDV...');
+      navigate('/atendimento', { state: { prefill: completeAppt } });
     } catch {
       toast.error('Erro ao finalizar o atendimento.');
-    } finally {
       setCompleteLoading(false);
       setCompleteAppt(null);
     }
-  }, [completeAppt, load]);
+  }, [completeAppt, navigate]);
 
   const handleCompleteCancel = useCallback(() => {
     setCompleteAppt(null);

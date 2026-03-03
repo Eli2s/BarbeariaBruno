@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,9 @@ const PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito
 
 export default function ServiceFormPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const prefillAppt = location.state?.prefill;
 
   // React Query hooks for data fetching
   const { data: clients = [] } = useClients();
@@ -87,6 +90,49 @@ export default function ServiceFormPage() {
       setActivePlan(null);
     }
   }, [clientId, clientPlans]);
+
+  // Auto-fill logic from `prefillAppt`
+  useEffect(() => {
+    if (prefillAppt && clients.length > 0 && serviceItems.length > 0) {
+      if (!clientId) {
+        // Try to match the client by phone or name
+        const cPhone = prefillAppt.clientPhone.replace(/\D/g, '');
+        const matched = clients.find(c => 
+          (cPhone && c.whatsapp && c.whatsapp === cPhone) || 
+          c.name.toLowerCase() === prefillAppt.clientName.toLowerCase()
+        );
+
+        if (matched) {
+          setClientId(matched.id!);
+        } else {
+          // If the user hasn't opened the quick form or typed already
+          if (!showQuickForm && clientSearch === '') {
+            setClientSearch(prefillAppt.clientName);
+            setQuickName(prefillAppt.clientName);
+            setQuickWhatsapp(cPhone.length === 11 ? phoneMask(cPhone) : '');
+            setShowQuickForm(true);
+            toast.info(`Cliente "${prefillAppt.clientName}" não encontrado, confirme o cadastro rápido.`);
+          }
+        }
+      }
+
+      if (selectedServices.length === 0 && prefillAppt.serviceItem) {
+        // Try to select initial service
+        const svc = serviceItems.find(s => s.name.toLowerCase() === prefillAppt.serviceItem?.toLowerCase());
+        if (svc) {
+          setSelectedServices([{ id: svc.id!, name: svc.name, price: svc.price }]);
+        }
+      }
+
+      if (!barberId && prefillAppt.barberId) {
+        setBarberId(String(prefillAppt.barberId));
+      }
+
+      if (prefillAppt.dateTime && dateTime === format(new Date(), "yyyy-MM-dd'T'HH:mm")) {
+         setDateTime(format(new Date(prefillAppt.dateTime), "yyyy-MM-dd'T'HH:mm"));
+      }
+    }
+  }, [prefillAppt, clients, serviceItems]);
 
   // Set active cashback when client changes
   useEffect(() => {
@@ -278,9 +324,9 @@ export default function ServiceFormPage() {
 
       toast.success('Atendimento registrado!');
 
-      // Enviar confirmação WhatsApp (fire-and-forget)
+      // Enviar confirmação WhatsApp (fire-and-forget) apenas se não for um atendimento finalizado direto da agenda (pois a agenda já envia o SMS).
       const registeredClient = clients.find(c => c.id === clientId);
-      if (registeredClient?.whatsapp) {
+      if (registeredClient?.whatsapp && !prefillAppt) {
         const savedService = {
           clientId,
           date: dateTime,
@@ -305,7 +351,7 @@ export default function ServiceFormPage() {
           .catch(() => {});
       }
 
-      navigate('/');
+      navigate(prefillAppt ? '/agendamentos' : '/');
     } catch {
       toast.error('Erro ao registrar atendimento');
     }
