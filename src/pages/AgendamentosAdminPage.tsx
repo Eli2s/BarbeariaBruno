@@ -34,7 +34,7 @@ function formatDateTime(dt: string): string {
 export default function AgendamentosAdminPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading]           = useState(true);
-  const [filter, setFilter]             = useState('pendente');
+  const [filter, setFilter]             = useState('confirmado');
   const [updating, setUpdating]         = useState<number | null>(null);
 
   const load = useCallback(async () => {
