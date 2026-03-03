@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiDelete } from './apiClient';
+import { apiGet, apiPost, apiDelete, apiPatch } from './apiClient';
 
 export interface Appointment {
     id: number;
@@ -44,7 +44,7 @@ export const rescheduleAppointment = (id: number, clientPhone: string, date: str
     apiPost<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
 
 export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado' | 'finalizado') =>
-    apiPost<Appointment>(`/appointments/${id}/status`, { status });
+    apiPatch<Appointment>(`/appointments/${id}/status`, { status });
 
 // Swap
 export const swapAppointments = (appointmentIdA: number, appointmentIdB: number) =>
