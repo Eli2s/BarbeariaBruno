@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
-import { User, Scissors, Clock, GripVertical } from 'lucide-react';
+import { User, Scissors, Clock, GripVertical, CheckCircle2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Appointment } from '@/api/appointments';
 
@@ -8,6 +8,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   pendente:   { bg: 'bg-amber-500/20 border-amber-500/40', text: 'text-amber-400', label: 'Pendente' },
   confirmado: { bg: 'bg-emerald-500/20 border-emerald-500/40', text: 'text-emerald-400', label: 'Confirmado' },
   cancelado:  { bg: 'bg-red-500/20 border-red-500/40', text: 'text-red-400', label: 'Cancelado' },
+  finalizado: { bg: 'bg-slate-500/20 border-slate-500/40', text: 'text-slate-400', label: 'Finalizado' },
 };
 
 interface Props {
@@ -17,9 +18,10 @@ interface Props {
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent, appointment: Appointment) => void;
   onDragEnd?: (e: React.DragEvent) => void;
+  onComplete?: (appointment: Appointment) => void;
 }
 
-export function AppointmentCard({ appointment, compact, onClick, draggable, onDragStart, onDragEnd }: Props) {
+export function AppointmentCard({ appointment, compact, onClick, draggable, onDragStart, onDragEnd, onComplete }: Props) {
   const style = STATUS_STYLES[appointment.status] || STATUS_STYLES.pendente;
   const time = new Date(appointment.dateTime).toLocaleTimeString('pt-BR', {
     hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
@@ -76,28 +78,42 @@ export function AppointmentCard({ appointment, compact, onClick, draggable, onDr
           <div className="flex items-center gap-1.5 text-sm font-semibold">
             {draggable && <GripVertical size={14} className="text-muted-foreground" />}
             <Clock size={13} className="text-muted-foreground" />
-          {time}
-        </div>
-        <Badge variant="outline" className={`text-[10px] border ${style.bg} ${style.text}`}>
-          {style.label}
-        </Badge>
-      </div>
-      <div className="space-y-1 text-xs">
-        <div className="flex items-center gap-1.5">
-          <User size={12} className="text-muted-foreground" />
-          <span className="font-medium">{appointment.clientName}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Scissors size={12} className="text-muted-foreground" />
-          <span>{appointment.serviceItem}</span>
-        </div>
-        {appointment.barber && (
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <User size={12} />
-            <span>{appointment.barber.name}</span>
+            {time}
           </div>
-        )}
-      </div>
+          <div className="flex items-center gap-2">
+            {onComplete && ['pendente', 'confirmado'].includes(appointment.status) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComplete(appointment);
+                }}
+                className="text-primary hover:text-primary/70 transition-colors"
+                title="Finalizar Agendamento"
+              >
+                <CheckCircle2 size={16} />
+              </button>
+            )}
+            <Badge variant="outline" className={`text-[10px] border ${style.bg} ${style.text}`}>
+              {style.label}
+            </Badge>
+          </div>
+        </div>
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-1.5">
+            <User size={12} className="text-muted-foreground" />
+            <span className="font-medium">{appointment.clientName}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Scissors size={12} className="text-muted-foreground" />
+            <span>{appointment.serviceItem}</span>
+          </div>
+          {appointment.barber && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <User size={12} />
+              <span>{appointment.barber.name}</span>
+            </div>
+          )}
+        </div>
       </motion.div>
     </div>
   );

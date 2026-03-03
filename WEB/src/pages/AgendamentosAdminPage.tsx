@@ -13,8 +13,10 @@ import { AgendaWeekView } from '@/components/agenda/AgendaWeekView';
 import { AgendaMonthView } from '@/components/agenda/AgendaMonthView';
 import { BlockedPeriodManager } from '@/components/agenda/BlockedPeriodManager';
 import { SwapConfirmDialog } from '@/components/agenda/SwapConfirmDialog';
+import { CompleteConfirmDialog } from '@/components/agenda/CompleteConfirmDialog';
 import { sendWhatsAppMessage } from '@/lib/whatsappApi';
 import type { BlockedPeriod } from '@/types';
+import { updateAppointmentStatus } from '@/api/appointments';
 
 export default function AgendamentosAdminPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('dia');
@@ -28,6 +30,10 @@ export default function AgendamentosAdminPage() {
   const [swapA, setSwapA] = useState<Appointment | null>(null);
   const [swapB, setSwapB] = useState<Appointment | null>(null);
   const [swapLoading, setSwapLoading] = useState(false);
+
+  // Complete state
+  const [completeAppt, setCompleteAppt] = useState<Appointment | null>(null);
+  const [completeLoading, setCompleteLoading] = useState(false);
 
   const { data: barbers = [] } = useBarbers();
 
@@ -102,6 +108,29 @@ export default function AgendamentosAdminPage() {
     setSwapB(null);
   }, []);
 
+  const handleCompleteRequest = useCallback((appt: Appointment) => {
+    setCompleteAppt(appt);
+  }, []);
+
+  const handleCompleteConfirm = useCallback(async () => {
+    if (!completeAppt) return;
+    setCompleteLoading(true);
+    try {
+      await updateAppointmentStatus(completeAppt.id, 'finalizado');
+      toast.success('Atendimento finalizado com sucesso!');
+      await load();
+    } catch {
+      toast.error('Erro ao finalizar o atendimento.');
+    } finally {
+      setCompleteLoading(false);
+      setCompleteAppt(null);
+    }
+  }, [completeAppt, load]);
+
+  const handleCompleteCancel = useCallback(() => {
+    setCompleteAppt(null);
+  }, []);
+
   return (
     <AppLayout>
       <div className="p-4 max-w-6xl mx-auto space-y-4">
@@ -128,6 +157,7 @@ export default function AgendamentosAdminPage() {
                     appointments={appointments}
                     blockedPeriods={blockedPeriods}
                     onSwapRequest={handleSwapRequest}
+                    onCompleteRequest={handleCompleteRequest}
                   />
                 )}
                 {viewMode === 'semana' && (
@@ -180,6 +210,14 @@ export default function AgendamentosAdminPage() {
           loading={swapLoading}
           onConfirm={handleSwapConfirm}
           onCancel={handleSwapCancel}
+        />
+
+        <CompleteConfirmDialog
+          open={!!completeAppt}
+          appointment={completeAppt}
+          loading={completeLoading}
+          onConfirm={handleCompleteConfirm}
+          onCancel={handleCompleteCancel}
         />
       </div>
     </AppLayout>

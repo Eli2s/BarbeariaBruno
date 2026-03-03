@@ -347,8 +347,8 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (!['confirmado', 'cancelado'].includes(status)) {
-        return res.status(400).json({ error: 'Status deve ser "confirmado" ou "cancelado".' });
+    if (!['confirmado', 'cancelado', 'finalizado'].includes(status)) {
+        return res.status(400).json({ error: 'Status deve ser "confirmado", "cancelado" ou "finalizado".' });
     }
 
     try {
@@ -365,6 +365,8 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
             let msg = '';
             if (status === 'confirmado') {
                 msg = `Olá ${appointment.clientName}! ✅ Seu agendamento para *${dataHora}* com *${barberName}* (${appointment.serviceItem}) foi *confirmado*! Te esperamos. Obrigado!`;
+            } else if (status === 'finalizado') {
+                msg = `Olá ${appointment.clientName}! 💇 Seu atendimento com *${barberName}* foi finalizado. Agradecemos pela preferência e volte sempre!`;
             } else {
                 msg = `Olá ${appointment.clientName}. 😔 Infelizmente seu agendamento para *${dataHora}* foi *cancelado*. Por favor, entre em contato para remarcar.`;
             }

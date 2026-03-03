@@ -7,7 +7,7 @@ export interface Appointment {
     barberId: number | null;
     serviceItem: string;
     dateTime: string;
-    status: 'pendente' | 'confirmado' | 'cancelado';
+    status: 'pendente' | 'confirmado' | 'cancelado' | 'finalizado';
     notes?: string | null;
     createdAt: string;
     barber?: { id: number; name: string; nickname: string } | null;
@@ -43,7 +43,7 @@ export const cancelAppointment = (id: number, clientPhone: string) =>
 export const rescheduleAppointment = (id: number, clientPhone: string, date: string, time: string) =>
     apiPost<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
 
-export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado') =>
+export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado' | 'finalizado') =>
     apiPost<Appointment>(`/appointments/${id}/status`, { status });
 
 // Swap
