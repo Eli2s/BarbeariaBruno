@@ -56,8 +56,8 @@ router.get('/availability', async (req: Request, res: Response) => {
     }
 
     try {
-        const dayStart = new Date(`${date}T00:00:00`);
-        const dayEnd = new Date(`${date}T23:59:59`);
+        const dayStart = new Date(`${date}T00:00:00-03:00`);
+        const dayEnd = new Date(`${date}T23:59:59-03:00`);
 
         const where: any = {
             dateTime: { gte: dayStart, lte: dayEnd },
@@ -69,7 +69,12 @@ router.get('/availability', async (req: Request, res: Response) => {
         const takenHM = new Set(
             taken.map((a: any) => {
                 const d = new Date(a.dateTime);
-                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                const formatter = new Intl.DateTimeFormat('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'America/Sao_Paulo'
+                });
+                return formatter.format(d);
             })
         );
 
@@ -79,11 +84,24 @@ router.get('/availability', async (req: Request, res: Response) => {
 
         // Se a data de pesquisa for igual a hoje, remove os horários que já passaram
         const now = new Date();
-        const queryDateString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const ptBRDateStr = new Intl.DateTimeFormat('pt-BR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'America/Sao_Paulo'
+        }).format(now); // returns "DD/MM/YYYY"
+
+        const [day, month, year] = ptBRDateStr.split('/');
+        const queryDateString = `${year}-${month}-${day}`;
 
         if (date === queryDateString) {
-            const currentHour = now.getHours();
-            const currentMinute = now.getMinutes();
+            const ptBRTimeStr = new Intl.DateTimeFormat('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'America/Sao_Paulo'
+            }).format(now); // returns "HH:mm"
+
+            const [currentHour, currentMinute] = ptBRTimeStr.split(':').map(Number);
 
             freeSlots = freeSlots.filter(s => {
                 const [h, m] = s.split(':').map(Number);
@@ -131,7 +149,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     try {
-        const dateTime = new Date(`${date}T${time}:00`);
+        const dateTime = new Date(`${date}T${time}:00-03:00`);
         if (isNaN(dateTime.getTime())) {
             return res.status(400).json({ error: 'Data ou hora inválida.' });
         }
@@ -176,7 +194,8 @@ router.post('/', async (req: Request, res: Response) => {
                     data: {
                         name: clientName,
                         nickname: clientName.split(' ')[0], // Primeiro nome como nickname padrão
-                        whatsapp: clientPhone
+                        whatsapp: clientPhone,
+                        tags: []
                     }
                 });
             }
@@ -308,7 +327,7 @@ router.patch('/:id/reschedule', async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Telefone não confere com o agendamento.' });
         }
 
-        const newDateTime = new Date(`${date}T${time}:00`);
+        const newDateTime = new Date(`${date}T${time}:00-03:00`);
         if (isNaN(newDateTime.getTime())) {
             return res.status(400).json({ error: 'Data ou hora inválida.' });
         }
