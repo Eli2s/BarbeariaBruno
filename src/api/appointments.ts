@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './apiClient';
+import { apiGet, apiPost, apiPatch } from './apiClient';
 
 export interface Appointment {
     id: number;
@@ -38,10 +38,10 @@ export const createAppointment = (data: CreateAppointmentPayload) =>
     apiPost<Appointment>('/appointments', data);
 
 export const cancelAppointment = (id: number, clientPhone: string) =>
-    apiPost<Appointment>(`/appointments/${id}/cancel`, { clientPhone });
+    apiPatch<Appointment>(`/appointments/${id}/cancel`, { clientPhone });
 
 export const rescheduleAppointment = (id: number, clientPhone: string, date: string, time: string) =>
-    apiPost<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
+    apiPatch<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
 
 export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado') =>
-    apiPost<Appointment>(`/appointments/${id}/status`, { status });
+    apiPatch<Appointment>(`/appointments/${id}/status`, { status });
