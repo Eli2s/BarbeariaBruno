@@ -74,7 +74,24 @@ router.get('/availability', async (req: Request, res: Response) => {
         );
 
         const allSlots = generateSlots(9, 19); // 09:00 – 18:30
-        const freeSlots = allSlots.filter(s => !takenHM.has(s));
+
+        let freeSlots = allSlots.filter(s => !takenHM.has(s));
+
+        // Se a data de pesquisa for igual a hoje, remove os horários que já passaram
+        const now = new Date();
+        const queryDateString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+        if (date === queryDateString) {
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+
+            freeSlots = freeSlots.filter(s => {
+                const [h, m] = s.split(':').map(Number);
+                if (h > currentHour) return true;
+                if (h === currentHour && m > currentMinute) return true;
+                return false;
+            });
+        }
 
         return res.json({ date, freeSlots });
     } catch (err: any) {
@@ -117,6 +134,10 @@ router.post('/', async (req: Request, res: Response) => {
         const dateTime = new Date(`${date}T${time}:00`);
         if (isNaN(dateTime.getTime())) {
             return res.status(400).json({ error: 'Data ou hora inválida.' });
+        }
+
+        if (dateTime < new Date()) {
+            return res.status(400).json({ error: 'Não é possível agendar em um horário que já passou.' });
         }
 
         // Verificar conflito de horário

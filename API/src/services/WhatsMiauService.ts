@@ -139,13 +139,18 @@ class WhatsMiauService {
      */
     public async sendText(number: string, text: string, options?: { delay?: number }) {
         try {
+            let cleanedNumber = number.replace(/\D/g, '');
+            if (cleanedNumber.length === 10 || cleanedNumber.length === 11) {
+                cleanedNumber = `55${cleanedNumber}`;
+            }
+
             // Conforme docs: body é { number, text, delay } diretamente
             const response = await this.api.post(`/message/sendText/${this.instanceName}`, {
-                number,
+                number: cleanedNumber,
                 text,
                 delay: options?.delay || 1200,
             });
-            console.info(`✅ Mensagem de texto enviada para ${number}`);
+            console.info(`✅ Mensagem de texto enviada para ${cleanedNumber}`);
             return response.data;
         } catch (error: any) {
             console.error(`❌ Erro ao enviar mensagem de texto para ${number}:`, error?.response?.data || error.message);
