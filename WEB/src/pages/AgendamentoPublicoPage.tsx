@@ -442,7 +442,15 @@ export default function AgendamentoPublicoPage() {
                       className="mt-1"
                       min={TODAY}
                       value={form.date}
-                      onChange={e => handleChange('date', e.target.value)}
+                      onChange={e => {
+                        const dt = new Date(e.target.value + 'T00:00:00');
+                        const todayStr = (new Date()).toISOString().split('T')[0];
+                        if (e.target.value >= todayStr) {
+                          handleChange('date', e.target.value);
+                        } else {
+                          toast.error('Data não pode ser no passado.');
+                        }
+                      }}
                     />
                   </div>
 
