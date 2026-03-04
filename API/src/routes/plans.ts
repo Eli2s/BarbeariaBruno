@@ -38,7 +38,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Criar plano
 router.post('/', async (req: Request, res: Response) => {
     try {
-        const { name, description, value, periodicity, clientId, ...rest } = req.body;
+        const { name, description, value, periodicity, clientId, startDate, nextCharge, ...rest } = req.body;
 
         let stripeProductId = null;
         let stripePriceId = null;
@@ -56,13 +56,18 @@ router.post('/', async (req: Request, res: Response) => {
             stripePriceId = stripeData.priceId;
         }
 
+        // startDate e nextCharge são obrigatórios no schema — usa data de hoje como padrão
+        const today = new Date().toISOString().split('T')[0];
+
         const plan = await prisma.plan.create({
             data: {
                 name,
-                description,
+                description: description || '',
                 value,
                 periodicity,
                 clientId,
+                startDate: startDate || today,
+                nextCharge: nextCharge || today,
                 stripeProductId,
                 stripePriceId,
                 ...rest
@@ -71,7 +76,7 @@ router.post('/', async (req: Request, res: Response) => {
         res.status(201).json(plan);
     } catch (error: any) {
         console.error('[Plans] Create Error', error);
-        res.status(500).json({ error: 'Erro ao criar plano' });
+        res.status(500).json({ error: 'Erro ao criar plano', stack: String(error) });
     }
 });
 
