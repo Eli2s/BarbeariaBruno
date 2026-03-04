@@ -50,6 +50,10 @@ export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'canc
 export const swapAppointments = (appointmentIdA: number, appointmentIdB: number) =>
     apiPost<{ a: Appointment; b: Appointment }>('/appointments/swap', { appointmentIdA, appointmentIdB });
 
+// Delete
+export const deleteAppointment = (id: number) =>
+    apiDelete<void>(`/appointments/${id}`);
+
 // Blocked periods
 export interface BlockedPeriodPayload {
     barberId?: number;

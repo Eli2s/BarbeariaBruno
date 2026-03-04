@@ -15,9 +15,10 @@ import { AgendaMonthView } from '@/components/agenda/AgendaMonthView';
 import { BlockedPeriodManager } from '@/components/agenda/BlockedPeriodManager';
 import { SwapConfirmDialog } from '@/components/agenda/SwapConfirmDialog';
 import { CompleteConfirmDialog } from '@/components/agenda/CompleteConfirmDialog';
+import { DeleteConfirmDialog } from '@/components/agenda/DeleteConfirmDialog';
 import { sendWhatsAppMessage } from '@/lib/whatsappApi';
 import type { BlockedPeriod } from '@/types';
-import { updateAppointmentStatus } from '@/api/appointments';
+import { updateAppointmentStatus, deleteAppointment } from '@/api/appointments';
 
 export default function AgendamentosAdminPage() {
   const navigate = useNavigate();
@@ -36,6 +37,10 @@ export default function AgendamentosAdminPage() {
   // Complete state
   const [completeAppt, setCompleteAppt] = useState<Appointment | null>(null);
   const [completeLoading, setCompleteLoading] = useState(false);
+
+  // Delete state
+  const [deleteAppt, setDeleteAppt] = useState<Appointment | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const { data: barbers = [] } = useBarbers();
 
@@ -132,6 +137,29 @@ export default function AgendamentosAdminPage() {
     setCompleteAppt(null);
   }, []);
 
+  const handleDeleteRequest = useCallback((appt: Appointment) => {
+    setDeleteAppt(appt);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteAppt) return;
+    setDeleteLoading(true);
+    try {
+      await deleteAppointment(deleteAppt.id);
+      toast.success('Agendamento excluído com sucesso.');
+      await load();
+    } catch {
+      toast.error('Erro ao excluir o agendamento.');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteAppt(null);
+    }
+  }, [deleteAppt, load]);
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteAppt(null);
+  }, []);
+
   return (
     <AppLayout>
       <div className="p-4 max-w-6xl mx-auto space-y-4">
@@ -159,6 +187,7 @@ export default function AgendamentosAdminPage() {
                     blockedPeriods={blockedPeriods}
                     onSwapRequest={handleSwapRequest}
                     onCompleteRequest={handleCompleteRequest}
+                    onDeleteRequest={handleDeleteRequest}
                   />
                 )}
                 {viewMode === 'semana' && (
@@ -168,6 +197,7 @@ export default function AgendamentosAdminPage() {
                     appointments={appointments}
                     blockedPeriods={blockedPeriods}
                     onDayClick={handleDayClick}
+                    onDeleteRequest={handleDeleteRequest}
                   />
                 )}
                 {viewMode === 'mes' && (
@@ -219,6 +249,14 @@ export default function AgendamentosAdminPage() {
           loading={completeLoading}
           onConfirm={handleCompleteConfirm}
           onCancel={handleCompleteCancel}
+        />
+
+        <DeleteConfirmDialog
+          open={!!deleteAppt}
+          appointment={deleteAppt}
+          loading={deleteLoading}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
         />
       </div>
     </AppLayout>

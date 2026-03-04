@@ -17,9 +17,10 @@ interface Props {
   blockedPeriods: BlockedPeriod[];
   onSwapRequest?: (appointmentA: Appointment, appointmentB: Appointment) => void;
   onCompleteRequest?: (appointment: Appointment) => void;
+  onDeleteRequest?: (appointment: Appointment) => void;
 }
 
-export function AgendaDayView({ date, appointments, blockedPeriods, onSwapRequest, onCompleteRequest }: Props) {
+export function AgendaDayView({ date, appointments, blockedPeriods, onSwapRequest, onCompleteRequest, onDeleteRequest }: Props) {
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
@@ -131,6 +132,7 @@ export function AgendaDayView({ date, appointments, blockedPeriods, onSwapReques
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     onComplete={onCompleteRequest}
+                    onDelete={onDeleteRequest}
                   />
                 ))}
               </div>

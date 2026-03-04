@@ -14,6 +14,23 @@ import { format, parseISO, isBefore, addDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useCreateCheckout } from '@/hooks/usePlans';
+
 type PlanScope = 'todos' | 'gerais' | 'clientes';
 type StatusFilter = 'todos' | 'ativos' | 'vencer' | 'atrasados';
 
@@ -24,7 +41,13 @@ export default function PlansListPage() {
 
   const { data: plans = [], isLoading } = usePlans();
   const { data: clients = [] } = useClients();
+  const { mutateAsync: createCheckout } = useCreateCheckout();
   const clientMap = Object.fromEntries(clients.map(c => [c.id!, c]));
+
+  // Controls for the general-plan Checkout Generation modal
+  const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState<typeof plans[0] | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [isGeneratingCheckout, setIsGeneratingCheckout] = useState(false);
 
   const now = new Date();
 
@@ -49,33 +72,72 @@ export default function PlansListPage() {
     return 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30';
   };
 
-  const getCheckoutUrl = (planId: number) => `${window.location.origin}/planos/checkout/${planId}`;
-
-  const handleShareWhatsApp = (plan: typeof plans[0], client?: typeof clients[0]) => {
-    const checkoutUrl = getCheckoutUrl(plan.id!);
-    const clientName = client ? (client.nickname || client.name) : 'cliente';
+  const invokeShare = async (plan: typeof plans[0], client: typeof clients[0], checkoutUrl: string) => {
+    const clientName = client.nickname || client.name;
     const periodicityLabel = plan.periodicity === 'quinzenal' ? 'quinzenal' : plan.periodicity === 'mensal' ? 'mensal' : `a cada ${plan.customDays} dias`;
 
     const message = `Olá ${clientName}! 👋\n\n` +
       `Aqui é o Bruno da Barbearia. Preparei um plano especial pra você:\n\n` +
       `✂️ *${plan.name}*\n` +
-      `📋 ${plan.description}\n` +
       `💰 *${formatCurrency(plan.value)}* (${periodicityLabel})\n` +
       (plan.benefits ? `🎁 Benefícios: ${plan.benefits}\n` : '') +
-      `\n🔗 Assine aqui: ${checkoutUrl}\n\n` +
+      `\n🔗 Assine aqui (Cartão ou Pix): ${checkoutUrl}\n\n` +
       `Qualquer dúvida, é só chamar! 💈`;
 
-    if (client?.whatsapp) {
+    if (client.whatsapp) {
       openWhatsApp(client.whatsapp, message);
     } else {
       navigator.clipboard.writeText(message);
-      toast.success('Mensagem copiada! Cole no WhatsApp do cliente.');
+      toast.success('Link do checkout copiado para a área de transferência!');
     }
   };
 
-  const handleCopyLink = (planId: number) => {
-    navigator.clipboard.writeText(getCheckoutUrl(planId));
-    toast.success('Link do checkout copiado!');
+  const handleShareWhatsApp = async (plan: typeof plans[0], directClient?: typeof clients[0]) => {
+    if (directClient) {
+      // It's a specific plan attached to someone or we overriden it.
+      try {
+        setIsGeneratingCheckout(true);
+        const { checkoutUrl } = await createCheckout({ planId: plan.id!, clientId: directClient.id! });
+        await invokeShare(plan, directClient, checkoutUrl);
+      } catch(err) {
+        toast.error('Erro ao gerar checkout com a Stripe.');
+      } finally {
+        setIsGeneratingCheckout(false);
+      }
+    } else {
+      // It's a general plan. Ask for which client to generate first.
+      setSelectedPlanForCheckout(plan);
+      setSelectedClientId('');
+    }
+  };
+
+  const submitGeneralCheckout = async () => {
+    if (!selectedPlanForCheckout || !selectedClientId) return;
+    try {
+      setIsGeneratingCheckout(true);
+      const targetClient = clientMap[Number(selectedClientId)];
+      const { checkoutUrl } = await createCheckout({ planId: selectedPlanForCheckout.id!, clientId: targetClient.id! });
+      await invokeShare(selectedPlanForCheckout, targetClient, checkoutUrl);
+      setSelectedPlanForCheckout(null);
+    } catch(err) {
+      toast.error('Erro ao gerar checkout geral.');
+    } finally {
+      setIsGeneratingCheckout(false);
+    }
+  };
+
+  const handleCopyLink = async (plan: typeof plans[0], directClient?: typeof clients[0]) => {
+    if (directClient) {
+        try {
+            const { checkoutUrl } = await createCheckout({ planId: plan.id!, clientId: directClient.id! });
+            navigator.clipboard.writeText(checkoutUrl);
+            toast.success('Link do checkout copiado!');
+        } catch {
+            toast.error('Erro ao gerar checkout');
+        }
+    } else {
+        toast.error('Para planos gerais, clique primeiro em Enviar WhatsApp para escolher o cliente');
+    }
   };
 
   // Stats
@@ -217,7 +279,8 @@ export default function PlansListPage() {
                             <Button
                               size="sm" variant="ghost"
                               className="h-7 text-[10px] gap-1"
-                              onClick={(e) => { e.stopPropagation(); handleCopyLink(p.id!); }}
+                              onClick={(e) => { e.stopPropagation(); handleCopyLink(p, client); }}
+                              disabled={isGeneratingCheckout}
                             >
                               <Link2 size={10} /> Link
                             </Button>
@@ -244,6 +307,41 @@ export default function PlansListPage() {
             </div>
           </AnimatePresence>
         )}
+
+        {/* Modal for Selecting Client when Plan is General */}
+        <Dialog open={!!selectedPlanForCheckout} onOpenChange={(open) => !open && setSelectedPlanForCheckout(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Gerar Link de Assinatura</DialogTitle>
+              <DialogDescription>
+                Este é um plano geral. Qual cliente vai assinar este plano '{selectedPlanForCheckout?.name}'?
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="py-4">
+              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o cliente..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name} ({c.whatsapp})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setSelectedPlanForCheckout(null)}>Cancelar</Button>
+              <Button onClick={submitGeneralCheckout} disabled={!selectedClientId || isGeneratingCheckout}>
+                {isGeneratingCheckout ? 'Gerando Stripe...' : 'Gerar e Enviar Zap'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </AppLayout>
   );

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
-import { User, Scissors, Clock, GripVertical, CheckCircle2 } from 'lucide-react';
+import { User, Scissors, Clock, GripVertical, CheckCircle2, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Appointment } from '@/api/appointments';
 
@@ -19,9 +19,10 @@ interface Props {
   onDragStart?: (e: React.DragEvent, appointment: Appointment) => void;
   onDragEnd?: (e: React.DragEvent) => void;
   onComplete?: (appointment: Appointment) => void;
+  onDelete?: (appointment: Appointment) => void;
 }
 
-export function AppointmentCard({ appointment, compact, onClick, draggable, onDragStart, onDragEnd, onComplete }: Props) {
+export function AppointmentCard({ appointment, compact, onClick, draggable, onDragStart, onDragEnd, onComplete, onDelete }: Props) {
   const style = STATUS_STYLES[appointment.status] || STATUS_STYLES.pendente;
   const time = new Date(appointment.dateTime).toLocaleTimeString('pt-BR', {
     hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
@@ -91,6 +92,18 @@ export function AppointmentCard({ appointment, compact, onClick, draggable, onDr
                 title="Finalizar Agendamento"
               >
                 <CheckCircle2 size={16} />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(appointment);
+                }}
+                className="text-muted-foreground hover:text-destructive transition-colors ml-1"
+                title="Excluir Agendamento"
+              >
+                <Trash2 size={16} />
               </button>
             )}
             <Badge variant="outline" className={`text-[10px] border ${style.bg} ${style.text}`}>

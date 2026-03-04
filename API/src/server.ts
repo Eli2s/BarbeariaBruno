@@ -17,11 +17,15 @@ import settingsRouter from './routes/settings';
 import adminWhatsAppRouter from './routes/adminWhatsApp';
 import webhookRouter from './routes/webhook';
 import appointmentsRouter from './routes/appointmentRoutes';
+import stripeWebhookRouter from './routes/stripeWebhook';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// O Webhook da Stripe precisa do body RAW (Buffer) para verificar a assinatura de segurança
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhookRouter);
 
 // Middlewares
 app.use(cors());

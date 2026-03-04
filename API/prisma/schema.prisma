@@ -12,10 +12,11 @@ model Client {
   id        Int       @id @default(autoincrement())
   name      String
   nickname  String
-  whatsapp  String
-  photo     String?
-  tags      Json      @default("[]")
-  createdAt DateTime  @default(now()) @map("created_at")
+  whatsapp             String
+  photo                String?
+  tags                 Json      @default("[]")
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
   services  Service[]
   plans     Plan[]
@@ -47,21 +48,24 @@ model Service {
 }
 
 model Plan {
-  id           Int           @id @default(autoincrement())
-  clientId     Int           @map("client_id")
-  name         String
-  description  String
-  value        Float
-  periodicity  String
-  customDays   Int?          @map("custom_days")
-  startDate    String        @map("start_date")
-  nextCharge   String        @map("next_charge")
-  status       String        @default("ativo")
-  benefits     String?
-  internalNote String?       @map("internal_note")
-  createdAt    DateTime      @default(now()) @map("created_at")
+  id                   Int           @id @default(autoincrement())
+  clientId             Int?          @map("client_id")
+  name                 String
+  description          String
+  value                Float
+  periodicity          String
+  customDays           Int?          @map("custom_days")
+  startDate            String        @map("start_date")
+  nextCharge           String        @map("next_charge")
+  status               String        @default("ativo")
+  benefits             String?
+  internalNote         String?       @map("internal_note")
+  stripeProductId      String?       @map("stripe_product_id")
+  stripePriceId        String?       @map("stripe_price_id")
+  stripeSubscriptionId String?       @map("stripe_subscription_id")
+  createdAt            DateTime      @default(now()) @map("created_at")
 
-  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client               Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   payments     PlanPayment[]
 
   @@map("plans")

@@ -11,9 +11,10 @@ interface Props {
   appointments: Appointment[];
   blockedPeriods: BlockedPeriod[];
   onDayClick: (d: Date) => void;
+  onDeleteRequest?: (appointment: Appointment) => void;
 }
 
-export function AgendaWeekView({ date, appointments, blockedPeriods, onDayClick }: Props) {
+export function AgendaWeekView({ date, appointments, blockedPeriods, onDayClick, onDeleteRequest }: Props) {
   const weekStart = startOfWeek(date, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -72,8 +73,13 @@ export function AgendaWeekView({ date, appointments, blockedPeriods, onDayClick 
             )}
 
             <div className="space-y-1">
-              {dayAppts.slice(0, 5).map(a => (
-                <AppointmentCard key={a.id} appointment={a} compact />
+              {dayAppts.slice(0, 5).map(appt => (
+                <AppointmentCard
+                  key={appt.id}
+                  appointment={appt}
+                  compact
+                  onDelete={onDeleteRequest}
+                />
               ))}
               {dayAppts.length > 5 && (
                 <div className="text-[10px] text-muted-foreground text-center">
