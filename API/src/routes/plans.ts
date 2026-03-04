@@ -40,20 +40,24 @@ router.post('/', async (req: Request, res: Response) => {
     try {
         const { name, description, value, periodicity, clientId, startDate, nextCharge, ...rest } = req.body;
 
-        let stripeProductId = null;
-        let stripePriceId = null;
+        let stripeProductId: string | null = null;
+        let stripePriceId: string | null = null;
 
         // Se não tem cliente fixo, é um "Template de Plano" geral da Barbearia
-        // Logo, criamos ele na Stripe para futuros checkouts
+        // Tenta criar na Stripe, mas não bloqueia se Stripe não estiver configurado
         if (!clientId) {
-            const stripeData = await StripeService.createProductAndPrice(
-                name,
-                description || 'Assinatura Barbearia',
-                value,
-                periodicity
-            );
-            stripeProductId = stripeData.productId;
-            stripePriceId = stripeData.priceId;
+            try {
+                const stripeData = await StripeService.createProductAndPrice(
+                    name,
+                    description || 'Assinatura Barbearia',
+                    value,
+                    periodicity
+                );
+                stripeProductId = stripeData.productId;
+                stripePriceId = stripeData.priceId;
+            } catch (stripeErr: any) {
+                console.warn('[Plans] Stripe nao configurado ou falhou, plano criado sem Stripe IDs:', stripeErr.message);
+            }
         }
 
         // startDate e nextCharge são obrigatórios no schema — usa data de hoje como padrão

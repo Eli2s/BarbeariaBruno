@@ -6,8 +6,6 @@ import StripeService from '../services/StripeService';
 const router = Router();
 
 // Endpoint cru (raw) porque a stripe precisa ler a stream para parsear
-// A configuração disso no Express.js requer que usemos express.raw({type: 'application/json'})
-// Porém, o body já chega dependendo da camada global. Usaremos apenas o req.body.
 router.post('/', async (req: Request, res: Response) => {
     const sig = req.headers['stripe-signature'] as string;
     let event: Stripe.Event;
@@ -22,10 +20,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     try {
         switch (event.type) {
-            case 'checkout.session.completed':
+            case 'checkout.session.completed': {
                 const session = event.data.object as Stripe.Checkout.Session;
 
-                // Aqui extraímos os metadados do checkout criado em Plans.ts
                 const clientIdRaw = session.client_reference_id;
                 const stripeCustomerId = session.customer as string;
                 const subscriptionId = session.subscription as string;
@@ -33,46 +30,44 @@ router.post('/', async (req: Request, res: Response) => {
                 if (clientIdRaw) {
                     const clientId = parseInt(clientIdRaw, 10);
 
-                    // 1. Atualizar a ID do Stripe no Cliente para compras futuras (1 click)
+                    // 1. Atualizar a ID do Stripe no Cliente para compras futuras
+                    const clientData: Record<string, unknown> = { stripeCustomerId };
                     await prisma.client.update({
                         where: { id: clientId },
-                        data: { stripeCustomerId }
+                        data: clientData as any,
                     });
 
                     // 2. Localizar o "Plano Modelo" usando o preço do item comprado
-                    // O checkout session não retorna diretamente os expanded items
-                    // mas sabemos via query de price ou resgatando a propria API q qual plan pertence
                     const lineItems = await new Stripe(process.env.STRIPE_SECRET_KEY || '').checkout.sessions.listLineItems(session.id);
-                    const priceId = lineItems.data[0].price?.id;
+                    const priceId = lineItems.data[0]?.price?.id;
 
                     if (priceId) {
+                        const whereClause: Record<string, unknown> = { stripePriceId: priceId, clientId: null };
                         const templatePlan = await prisma.plan.findFirst({
-                            where: { stripePriceId: priceId, clientId: null }
+                            where: whereClause as any,
                         });
 
                         if (templatePlan) {
-                            // 3. Criar uma via (instância de assinatura ativa) para o Cliente
-                            await prisma.plan.create({
-                                data: {
-                                    name: templatePlan.name,
-                                    description: templatePlan.description,
-                                    value: templatePlan.value,
-                                    periodicity: templatePlan.periodicity,
-                                    clientId: clientId,
-                                    stripeSubscriptionId: subscriptionId,
-                                    status: 'ativo',
-                                    startDate: new Date().toISOString().split('T')[0],
-                                    nextCharge: calculateNextCharge(templatePlan.periodicity),
-                                }
-                            });
+                            // 3. Criar uma instância de assinatura ativa para o Cliente
+                            const planData: Record<string, unknown> = {
+                                name: templatePlan.name,
+                                description: templatePlan.description,
+                                value: templatePlan.value,
+                                periodicity: templatePlan.periodicity,
+                                clientId,
+                                stripeSubscriptionId: subscriptionId,
+                                status: 'ativo',
+                                startDate: new Date().toISOString().split('T')[0],
+                                nextCharge: calculateNextCharge(templatePlan.periodicity),
+                            };
+                            await (prisma.plan.create as any)({ data: planData });
                         }
                     }
                 }
                 break;
+            }
             case 'invoice.payment_succeeded':
-                // Futuramente lida com pagamentos recorrentes sendo renovados (mês 2, mês 3...)
-                // const invoice = event.data.object as Stripe.Invoice;
-                // invoice.subscription traz o ID. Basta usar isso pra renovar no prisma.
+                // Futuramente lida com pagamentos recorrentes sendo renovados
                 break;
             default:
                 console.log(`Evento ${event.type} ignorado pela integração.`);
@@ -84,7 +79,6 @@ router.post('/', async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Webhook processing fatal error.' });
     }
 });
-
 
 function calculateNextCharge(periodicity: string): string {
     const d = new Date();
