@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://barbearia-bruno-tau.vercel.app/api';
 
 async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
