@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://bruno-online-api.vercel.app/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'barbearia-bruno-git-main-eli2s-projects-10435a78.vercel.app';
 
 async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
