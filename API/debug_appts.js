@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 
 async function main() {
-    // Update all 'pendente' to 'confirmado'
+    // Update all 'pendent' to 'confirmado'
     const result = await p.appointment.updateMany({
         where: { status: 'pendente' },
         data: { status: 'confirmado' },
