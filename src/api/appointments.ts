@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch } from './apiClient';
+import { apiGet, apiPost, apiDelete, apiPatch } from './apiClient';
 
 export interface Appointment {
     id: number;
@@ -7,7 +7,7 @@ export interface Appointment {
     barberId: number | null;
     serviceItem: string;
     dateTime: string;
-    status: 'pendente' | 'confirmado' | 'cancelado';
+    status: 'pendente' | 'confirmado' | 'cancelado' | 'finalizado';
     notes?: string | null;
     createdAt: string;
     barber?: { id: number; name: string; nickname: string } | null;
@@ -38,10 +38,35 @@ export const createAppointment = (data: CreateAppointmentPayload) =>
     apiPost<Appointment>('/appointments', data);
 
 export const cancelAppointment = (id: number, clientPhone: string) =>
-    apiPatch<Appointment>(`/appointments/${id}/cancel`, { clientPhone });
+    apiPost<Appointment>(`/appointments/${id}/cancel`, { clientPhone });
 
 export const rescheduleAppointment = (id: number, clientPhone: string, date: string, time: string) =>
-    apiPatch<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
+    apiPost<Appointment>(`/appointments/${id}/reschedule`, { clientPhone, date, time });
 
-export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado') =>
+export const updateAppointmentStatus = (id: number, status: 'confirmado' | 'cancelado' | 'finalizado') =>
     apiPatch<Appointment>(`/appointments/${id}/status`, { status });
+
+// Swap
+export const swapAppointments = (appointmentIdA: number, appointmentIdB: number) =>
+    apiPost<{ a: Appointment; b: Appointment }>('/appointments/swap', { appointmentIdA, appointmentIdB });
+
+// Delete
+export const deleteAppointment = (id: number) =>
+    apiDelete<void>(`/appointments/${id}`);
+
+// Blocked periods
+export interface BlockedPeriodPayload {
+    barberId?: number;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+}
+
+export const fetchBlockedPeriods = (barberId?: number) =>
+    apiGet<import('@/types').BlockedPeriod[]>(`/appointments/blocked-periods${barberId ? `?barberId=${barberId}` : ''}`);
+
+export const createBlockedPeriod = (data: BlockedPeriodPayload) =>
+    apiPost<import('@/types').BlockedPeriod>('/appointments/blocked-periods', data);
+
+export const deleteBlockedPeriod = (id: number) =>
+    apiDelete(`/appointments/blocked-periods/${id}`);

@@ -38,3 +38,9 @@ export const useDeletePlan = () => {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ['plans'] }); },
     });
 };
+
+export const useCreateCheckout = () => {
+    return useMutation({
+        mutationFn: ({ planId, clientId }: { planId: number, clientId: number }) => api.createCheckoutSession(planId, clientId),
+    });
+};

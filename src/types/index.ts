@@ -27,7 +27,7 @@ export interface Service {
 
 export interface Plan {
   id?: number;
-  clientId: number;
+  clientId?: number;
   name: string;
   description: string;
   value: number;
@@ -39,6 +39,7 @@ export interface Plan {
   benefits?: string;
   internalNote?: string;
   createdAt: string;
+  isGeneral?: boolean;
 }
 
 export interface Product {
@@ -125,6 +126,15 @@ export interface Order {
   paymentMethod: 'cartao' | 'pix' | 'link_whatsapp';
   status: 'pendente' | 'pago' | 'cancelado';
   createdAt: string;
+}
+
+export interface BlockedPeriod {
+  id?: number;
+  barberId?: number;
+  barberName?: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
 }
 
 export type ClientClassification =

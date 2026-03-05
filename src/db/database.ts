@@ -1,19 +1,19 @@
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie from 'dexie';
 import type { Client, Service, Plan, Product, PlanPayment, ServiceItem, Order, Barber, BarberItemCommission, Cashback, MessageTemplate, AppSettings } from '@/types';
 
 class BrunoDatabase extends Dexie {
-  clients!: EntityTable<Client, 'id'>;
-  services!: EntityTable<Service, 'id'>;
-  plans!: EntityTable<Plan, 'id'>;
-  products!: EntityTable<Product, 'id'>;
-  planPayments!: EntityTable<PlanPayment, 'id'>;
-  serviceItems!: EntityTable<ServiceItem, 'id'>;
-  orders!: EntityTable<Order, 'id'>;
-  barbers!: EntityTable<Barber, 'id'>;
-  barberItemCommissions!: EntityTable<BarberItemCommission, 'id'>;
-  cashbacks!: EntityTable<Cashback, 'id'>;
-  messageTemplates!: EntityTable<MessageTemplate, 'id'>;
-  settings!: EntityTable<AppSettings, 'key'>;
+  clients!: Dexie.Table<Client, number>;
+  services!: Dexie.Table<Service, number>;
+  plans!: Dexie.Table<Plan, number>;
+  products!: Dexie.Table<Product, number>;
+  planPayments!: Dexie.Table<PlanPayment, number>;
+  serviceItems!: Dexie.Table<ServiceItem, number>;
+  orders!: Dexie.Table<Order, number>;
+  barbers!: Dexie.Table<Barber, number>;
+  barberItemCommissions!: Dexie.Table<BarberItemCommission, number>;
+  cashbacks!: Dexie.Table<Cashback, number>;
+  messageTemplates!: Dexie.Table<MessageTemplate, number>;
+  settings!: Dexie.Table<AppSettings, string>;
 
   constructor() {
     super('bruno-barbearia');
@@ -72,4 +72,3 @@ class BrunoDatabase extends Dexie {
 }
 
 export const db = new BrunoDatabase();
-

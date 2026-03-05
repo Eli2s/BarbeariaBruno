@@ -6,6 +6,25 @@ import { fetchMessageTemplates } from '@/api/messageTemplates';
 import { apiPost } from '@/api/apiClient';
 import { format, addDays } from 'date-fns';
 import type { WhatsAppConfig, Client, Service, Plan } from '@/types';
+import { useSettings } from '@/hooks/useSettings';
+
+// ──────────────────────────────────────────────────
+// WhatsApp Config helpers (stored in app settings)
+// ──────────────────────────────────────────────────
+export async function getWhatsAppConfig(): Promise<WhatsAppConfig | null> {
+  try {
+    const { apiGet } = await import('@/api/apiClient');
+    const settings = await apiGet<any>('/settings/whatsapp');
+    return settings || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWhatsAppConfig(config: WhatsAppConfig): Promise<void> {
+  const { apiPost } = await import('@/api/apiClient');
+  await apiPost('/settings/whatsapp', config);
+}
 
 // Função para limpar número do telefone (somente números e adiciona 55)
 function cleanPhone(phone: string): string {

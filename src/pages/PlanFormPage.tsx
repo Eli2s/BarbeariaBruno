@@ -12,7 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent } from '@/components/ui/card';
+import { ArrowLeft, Globe, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { addDays, format } from 'date-fns';
 
@@ -23,6 +25,7 @@ export default function PlanFormPage() {
   const isEdit = !!id;
   const presetClientId = searchParams.get('clientId');
 
+  const [isGeneral, setIsGeneral] = useState(false);
   const [clientId, setClientId] = useState<number | null>(presetClientId ? Number(presetClientId) : null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -41,22 +44,22 @@ export default function PlanFormPage() {
   const updatePlan = useUpdatePlan();
   const createPlanPayment = useCreatePlanPayment();
 
-  // Load services for auto-suggest (only when creating new plan)
-  const { data: clientServices = [] } = useServices(clientId && !isEdit ? clientId : undefined);
-  const { data: clientPlans = [] } = usePlans(clientId && !isEdit ? clientId : undefined);
+  const { data: clientServices = [] } = useServices(clientId && !isEdit && !isGeneral ? clientId : undefined);
+  const { data: clientPlans = [] } = usePlans(clientId && !isEdit && !isGeneral ? clientId : undefined);
 
   useEffect(() => {
     if (existingPlan) {
-      setClientId(existingPlan.clientId); setName(existingPlan.name); setDescription(existingPlan.description);
+      setIsGeneral(existingPlan.isGeneral || !existingPlan.clientId);
+      setClientId(existingPlan.clientId || null);
+      setName(existingPlan.name); setDescription(existingPlan.description);
       setValue(existingPlan.value); setPeriodicity(existingPlan.periodicity); setCustomDays(existingPlan.customDays || 30);
       setStartDate(existingPlan.startDate); setStatus(existingPlan.status); setBenefits(existingPlan.benefits || '');
       setInternalNote(existingPlan.internalNote || '');
     }
   }, [existingPlan]);
 
-  // Auto-suggest on client selection
   useEffect(() => {
-    if (clientId && !isEdit && clientServices.length > 0) {
+    if (clientId && !isEdit && !isGeneral && clientServices.length > 0) {
       const analysis = analyzeClient(clientServices, clientPlans);
       if (analysis.totalVisits > 3) {
         if (analysis.avgDaysBetweenVisits <= 16) {
@@ -72,7 +75,7 @@ export default function PlanFormPage() {
         }
       }
     }
-  }, [clientId, isEdit, clientServices, clientPlans]);
+  }, [clientId, isEdit, isGeneral, clientServices, clientPlans]);
 
   const calcNextCharge = () => {
     const days = periodicity === 'quinzenal' ? 14 : periodicity === 'mensal' ? 30 : customDays;
@@ -81,11 +84,17 @@ export default function PlanFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientId || !name || !value) { toast.error('Preencha todos os campos obrigatórios'); return; }
+    if (!isGeneral && !clientId) { toast.error('Selecione um cliente ou marque como plano geral'); return; }
+    if (!name || !value) { toast.error('Preencha nome e valor'); return; }
+
     const data = {
-      clientId, name, description, value, periodicity, customDays: periodicity === 'personalizado' ? customDays : undefined,
+      clientId: isGeneral ? undefined : clientId!,
+      isGeneral,
+      name, description, value, periodicity,
+      customDays: periodicity === 'personalizado' ? customDays : undefined,
       startDate, nextCharge: calcNextCharge(), status, benefits, internalNote,
     };
+
     try {
       if (isEdit) {
         await updatePlan.mutateAsync({ id: Number(id), ...data });
@@ -93,9 +102,14 @@ export default function PlanFormPage() {
         navigate(-1);
       } else {
         const newPlan = await createPlan.mutateAsync({ ...data, createdAt: format(new Date(), 'yyyy-MM-dd') } as any);
-        await createPlanPayment.mutateAsync({ planId: newPlan.id!, expectedDate: calcNextCharge(), status: 'pendente', value });
-        toast.success('Plano criado! Redirecionando para pagamento...');
-        navigate(`/planos/checkout/${newPlan.id}`);
+        if (!isGeneral) {
+          await createPlanPayment.mutateAsync({ planId: newPlan.id!, expectedDate: calcNextCharge(), status: 'pendente', value });
+          toast.success('Plano criado! Redirecionando para checkout...');
+          navigate(`/planos/checkout/${newPlan.id}`);
+        } else {
+          toast.success('Plano geral criado com sucesso!');
+          navigate('/planos');
+        }
       }
     } catch { toast.error('Erro ao salvar plano'); }
   };
@@ -110,7 +124,27 @@ export default function PlanFormPage() {
           <h1 className="text-xl font-bold">{isEdit ? 'Editar Plano' : 'Novo Plano'}</h1>
         </div>
 
-        {client && (
+        {/* General/Specific toggle */}
+        {!isEdit && (
+          <Card className="overflow-hidden">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {isGeneral ? <Globe size={16} className="text-blue-500" /> : <User size={16} className="text-violet-500" />}
+                  <div>
+                    <p className="text-sm font-medium">{isGeneral ? 'Plano Geral' : 'Plano por Cliente'}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {isGeneral ? 'Disponível para todos os clientes' : 'Específico para um cliente'}
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={isGeneral} onCheckedChange={setIsGeneral} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {client && !isGeneral && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Cliente:</span>
             <Badge>{client.nickname || client.name}</Badge>
@@ -118,7 +152,7 @@ export default function PlanFormPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!presetClientId && !isEdit && (
+          {!isGeneral && !presetClientId && !isEdit && (
             <div className="space-y-2">
               <Label>Cliente *</Label>
               <Select value={clientId ? String(clientId) : ''} onValueChange={v => setClientId(Number(v))}>
@@ -182,7 +216,9 @@ export default function PlanFormPage() {
             <Textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Apenas visível para você..." />
           </div>
 
-          <Button type="submit" className="w-full h-12 font-semibold" disabled={createPlan.isPending || updatePlan.isPending}>{isEdit ? 'Salvar Alterações' : 'Criar Plano'}</Button>
+          <Button type="submit" className="w-full h-12 font-semibold" disabled={createPlan.isPending || updatePlan.isPending}>
+            {isEdit ? 'Salvar Alterações' : 'Criar Plano'}
+          </Button>
         </form>
 
         {/* Payment History */}

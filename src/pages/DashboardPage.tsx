@@ -1,25 +1,26 @@
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { formatCurrency } from '@/lib/format';
 import { sendCashbackReminder } from '@/lib/whatsappApi';
 import { AppLayout } from '@/components/AppLayout';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Users, CreditCard, UserPlus, Scissors,
   RefreshCw, TrendingUp, Eye, EyeOff,
-  Package, ShoppingBag
+  Package, ShoppingBag, Clock, Star
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  CartesianGrid, Cell
-} from 'recharts';
+import { motion } from 'framer-motion';
 import {
   format, differenceInDays,
-  startOfMonth, subDays
+  startOfMonth, subDays, isToday
 } from 'date-fns';
 import { GlassCard } from '@/components/dashboard/GlassCard';
-import { StatCard } from '@/components/dashboard/StatCard';
 
 import { useClients } from '@/hooks/useClients';
 import { usePlans } from '@/hooks/usePlans';
@@ -27,6 +28,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useBarbers } from '@/hooks/useBarbers';
 import { useServices } from '@/hooks/useServices';
 import { useCashbacks, useUpdateCashback } from '@/hooks/useCashbacks';
+import { fetchAppointments } from '@/api/appointments';
 import { apiGet } from '@/api/apiClient';
 import type { Client } from '@/types';
 
@@ -41,6 +43,7 @@ const BARBER_COLORS = [
 ];
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [barberPeriod, setBarberPeriod] = useState<BarberPeriod>('mensal');
   const [hideValues, setHideValues] = useState(false);
 
@@ -52,6 +55,12 @@ export default function DashboardPage() {
   const { data: allServices = [], refetch: refetchServices } = useServices();
   const { data: allCashbacks = [], refetch: refetchCashbacks } = useCashbacks();
   const updateCashbackMutation = useUpdateCashback();
+
+  // Appointments
+  const { data: appointments = [] } = useQuery({
+    queryKey: ['appointments'],
+    queryFn: () => fetchAppointments(),
+  });
 
   // Filter active plans and barbers on the client side
   const plans = allPlans.filter(p => p.status === 'ativo');
@@ -123,7 +132,7 @@ export default function DashboardPage() {
   const barberCutoff          = getBarberCutoff(barberPeriod);
   const servicesInBarberPeriod = allServices.filter(s => s.date.slice(0, 10) >= barberCutoff);
 
-  // ── Barber data: Atendimentos + Valor a Receber (comissão) ──
+  // ── Barber data ──
   const barberDataMap = new Map<number, {
     name: string;
     count: number;
@@ -152,9 +161,8 @@ export default function DashboardPage() {
     .map(([id, data]) => ({ id, ...data }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Chart data for barber revenue chart
-  const barberChartData  = barberDataArray.map(b => ({ name: b.name, revenue: b.revenue, count: b.count }));
   const barberChartTotal = barberDataArray.reduce((s, d) => s + d.revenue, 0);
+  const maxRevenue = Math.max(...barberDataArray.map(b => b.revenue), 1);
 
   // ── Product sales this month ──
   const productSalesMap = new Map<string, { name: string; qty: number; total: number }>();
@@ -178,208 +186,280 @@ export default function DashboardPage() {
   const topProducts        = Array.from(productSalesMap.values()).sort((a, b) => b.total - a.total).slice(0, 4);
   const productTotalRevenue = topProducts.reduce((s, p) => s + p.total, 0);
 
-  // ── Tooltip ──
-  const ChartTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div className="bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-2xl">
-        <p className="text-sm font-bold text-white">{d.name}</p>
-        <p className="text-xs text-gray-400 mt-1">
-          <span className="text-white font-semibold">{hideValues ? '•••••' : formatCurrency(d.revenue)}</span> • {d.count} atendimentos
-        </p>
-      </div>
-    );
-  };
+  // ── Appointments for today ──
+  const todayAppointments = appointments
+    .filter(a => {
+      try {
+        return isToday(new Date(a.dateTime)) && a.status !== 'cancelado';
+      } catch { return false; }
+    })
+    .slice(0, 6);
 
   return (
     <AppLayout>
-      <div className="min-h-screen bg-[hsl(240,15%,4%)] text-white p-4 md:p-6 space-y-5">
+      <div className="min-h-screen bg-background text-foreground p-4 md:p-6 space-y-6">
 
         {/* ════ Header ════ */}
-        <div className="flex items-center justify-between">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center justify-between"
+        >
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400">
-              Bruno Barbearia
+            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+              Dashboard
             </h1>
-            <p className="text-xs text-gray-500 mt-0.5">Painel de controle</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Bem-vindo à <span className="text-primary font-semibold">Bruno Barbearia</span> — Monitoramento Geral
+            </p>
           </div>
           <div className="flex gap-2 items-center">
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={() => setHideValues(v => !v)}
               title={hideValues ? 'Mostrar valores' : 'Ocultar valores'}
             >
               {hideValues ? <EyeOff size={14} /> : <Eye size={14} />}
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10" onClick={handleRefresh}>
+            <Button size="sm" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={handleRefresh}>
               <RefreshCw size={14} />
             </Button>
           </div>
-        </div>
+        </motion.div>
 
-        {/* ════ Stat Cards ════ */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard title="Ticket Médio"   value={fmtVal(ticketMedio)}       icon={TrendingUp} glowColor="rgba(250,204,21,0.4)"   iconBg="bg-yellow-500/20" />
-          <StatCard title="Atendimentos"   value={totalAtendimentos}          icon={Scissors}   glowColor="rgba(16,185,129,0.4)"   iconBg="bg-emerald-500/20" subtitle="MÊS" />
-          <StatCard title="Planos Ativos"  value={plans.length}               icon={CreditCard} glowColor="rgba(139,92,246,0.4)"   iconBg="bg-violet-500/20" />
-          <StatCard title="Total Clientes" value={clients.length}             icon={Users}      glowColor="rgba(59,130,246,0.4)"   iconBg="bg-blue-500/20" />
-          <StatCard title="Novos este mês" value={newClientsThisMonth}        icon={UserPlus}   glowColor="rgba(251,146,60,0.4)"   iconBg="bg-orange-500/20" />
-        </div>
-
-        {/* ════ Revenue by Barber Chart ════ */}
-        <GlassCard className="p-5" glowColor="rgba(99,102,241,0.4)">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/20">
-                <Scissors size={18} className="text-indigo-400" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Faturamento por Barbeiro</h3>
-                <p className="text-[10px] text-gray-500">Receita bruta gerada no período</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {!hideValues && barberChartTotal > 0 && (
-                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
-                  <TrendingUp size={12} className="text-emerald-400" />
-                  <span className="text-xs font-bold text-emerald-400">{formatCurrency(barberChartTotal)}</span>
+        {/* ════ KPI Cards ════ */}
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.06 } },
+          }}
+          className="grid grid-cols-2 md:grid-cols-5 gap-3"
+        >
+          {[
+            { title: "TICKET MÉDIO", value: fmtVal(ticketMedio), icon: TrendingUp, change: "+12%", iconBg: "bg-primary/10" },
+            { title: "ATENDIMENTOS", value: totalAtendimentos, icon: Scissors, change: "+8%", iconBg: "bg-primary/10" },
+            { title: "PLANOS ATIVOS", value: plans.length, icon: CreditCard, change: "+5%", iconBg: "bg-primary/10" },
+            { title: "TOTAL CLIENTES", value: clients.length, icon: Users, change: "+15%", iconBg: "bg-primary/10" },
+            { title: "NOVOS ESTE MÊS", value: newClientsThisMonth, icon: UserPlus, change: "+20%", iconBg: "bg-primary/10" },
+          ].map((stat) => (
+            <motion.div
+              key={stat.title}
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: { opacity: 1, y: 0 },
+              }}
+              transition={{ duration: 0.35 }}
+              className="bg-card border border-border rounded-xl p-4 flex flex-col justify-between min-h-[120px]"
+            >
+              <div className="flex items-start justify-between">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {stat.title}
+                </span>
+                <div className={`p-2 rounded-lg ${stat.iconBg}`}>
+                  <stat.icon size={16} className="text-primary" />
                 </div>
-              )}
-              <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
-                <SelectTrigger className="h-7 text-[10px] w-24 bg-white/5 border-white/10 text-gray-300">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="semanal">Semanal</SelectItem>
-                  <SelectItem value="mensal">Este mês</SelectItem>
-                  <SelectItem value="30dias">30 dias</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              </div>
+              <div className="mt-auto">
+                <p className="text-2xl font-extrabold tracking-tight text-foreground">{stat.value}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <TrendingUp size={12} className="text-emerald-500" />
+                  <span className="text-[11px] font-semibold text-emerald-500">{stat.change}</span>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
 
-          {barberChartData.length === 0 || barberChartData.every(d => d.revenue === 0) ? (
-            <div className="flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
-              <Scissors size={40} className="opacity-20" />
-              <p className="text-sm">Nenhum atendimento com barbeiro neste período</p>
-              <p className="text-xs text-gray-600">Registre atendimentos com barbeiro para ver os dados aqui</p>
+        {/* ════ Two Column: Revenue + Performance ════ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* ── Faturamento por Barbeiro ── */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-foreground">Faturamento por Barbeiro</h3>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
+                  {{ semanal: 'Esta Semana', mensal: 'Este Mês', '30dias': '30 Dias' }[barberPeriod]}
+                </Badge>
+                <Select value={barberPeriod} onValueChange={(v: BarberPeriod) => setBarberPeriod(v)}>
+                  <SelectTrigger className="h-7 text-[10px] w-24 bg-muted/50 border-border text-muted-foreground">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="mensal">Este mês</SelectItem>
+                    <SelectItem value="30dias">30 dias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          ) : (
-            <div className="h-52 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barberChartData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    {barberChartData.map((_, index) => (
-                      <linearGradient id={`bGrad-${index}`} x1="0" y1="0" x2="1" y2="0" key={`grad-${index}`}>
-                        <stop offset="0%"   stopColor={BARBER_COLORS[index % BARBER_COLORS.length].bar} stopOpacity={0.15} />
-                        <stop offset="100%" stopColor={BARBER_COLORS[index % BARBER_COLORS.length].bar} stopOpacity={0.9} />
-                      </linearGradient>
-                    ))}
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.04)" />
-                  <XAxis type="number" hide />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    tick={{ fill: '#9ca3af', fontSize: 12, fontWeight: 600 }}
-                    width={85}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                  <Bar dataKey="revenue" radius={[0, 8, 8, 0]} barSize={28} animationDuration={1200}>
-                    {barberChartData.map((_, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={`url(#bGrad-${index})`}
-                        stroke={BARBER_COLORS[index % BARBER_COLORS.length].bar}
-                        strokeWidth={1}
-                        strokeOpacity={0.4}
+
+            {barberDataArray.length === 0 || barberDataArray.every(d => d.revenue === 0) ? (
+              <div className="flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+                <Scissors size={40} className="opacity-20" />
+                <p className="text-sm">Nenhum atendimento neste período</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {barberDataArray.map((barber) => (
+                  <div key={barber.id}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-foreground">{barber.name}</span>
+                      <span className="text-sm font-bold text-foreground">{fmtVal(barber.revenue)}</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-primary to-purple-500 transition-all duration-700"
+                        style={{ width: `${(barber.revenue / maxRevenue) * 100}%` }}
                       />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </GlassCard>
-
-        {/* ════ Performance por Barbeiro ════ */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Scissors size={16} className="text-indigo-400" />
-            <h3 className="text-sm font-bold text-white">Performance por Barbeiro</h3>
-            <span className="text-[10px] text-gray-600 ml-auto">
-              {{ semanal: 'Últimos 7 dias', mensal: 'Este mês', '30dias': 'Últimos 30 dias' }[barberPeriod]}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {barberDataArray.map((barber, idx) => {
-              const color = BARBER_COLORS[idx % BARBER_COLORS.length];
-              return (
-                <GlassCard key={barber.id} className="p-4" glowColor={`${color.bar}40`}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-full ${color.bg} border ${color.border} flex items-center justify-center text-xs font-bold ${color.text}`}>
-                      {barber.name.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">{barber.name}</p>
-                      <p className="text-[10px] text-gray-500">{barber.count} atendimentos</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.04]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">Faturamento</p>
-                      <p className="text-sm font-bold text-white mt-0.5">{fmtVal(barber.revenue)}</p>
-                    </div>
-                    <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.04]">
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider">A Receber</p>
-                      <p className={`text-sm font-bold mt-0.5 ${color.text}`}>
-                        {fmtVal(barber.commission)}
-                      </p>
-                    </div>
+                ))}
+                {!hideValues && barberChartTotal > 0 && (
+                  <div className="pt-3 border-t border-border flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium">Total</span>
+                    <span className="text-sm font-bold text-primary">{formatCurrency(barberChartTotal)}</span>
                   </div>
-                </GlassCard>
-              );
-            })}
-            {barberDataArray.length === 0 && (
-              <p className="col-span-full text-center text-gray-600 py-6 text-xs">Nenhum barbeiro ativo cadastrado</p>
+                )}
+              </div>
             )}
           </div>
+
+          {/* ── Performance por Barbeiro (Table) ── */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-foreground">Performance por Barbeiro</h3>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                {{ semanal: 'Últimos 7 dias', mensal: 'Este mês', '30dias': 'Últimos 30 dias' }[barberPeriod]}
+              </span>
+            </div>
+
+            {barberDataArray.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-xs">Nenhum barbeiro ativo</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Barbeiro</TableHead>
+                    <TableHead className="text-xs text-center">Serviços</TableHead>
+                    <TableHead className="text-xs text-right">Comissão</TableHead>
+                    <TableHead className="text-xs text-center">Avaliação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {barberDataArray.map((barber, idx) => {
+                    const color = BARBER_COLORS[idx % BARBER_COLORS.length];
+                    return (
+                      <TableRow key={barber.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className={`${color.bg} ${color.text} text-xs font-bold`}>
+                                {barber.name.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium text-foreground">{barber.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center text-sm text-foreground">{barber.count}</TableCell>
+                        <TableCell className="text-right text-sm font-semibold text-primary">{fmtVal(barber.commission)}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <Star size={14} className="text-yellow-500 fill-yellow-500" />
+                            <span className="text-xs text-muted-foreground">4.8</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+
+            <button
+              onClick={() => navigate('/barbeiros')}
+              className="mt-3 text-xs text-primary hover:underline font-medium w-full text-center block"
+            >
+              Ver Relatório Completo →
+            </button>
+          </div>
+        </div>
+
+        {/* ════ Últimos Agendamentos ════ */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-bold text-foreground">Últimos Agendamentos</h3>
+            <button
+              onClick={() => navigate('/agendamentos')}
+              className="text-xs text-primary hover:underline font-medium"
+            >
+              Ver todos →
+            </button>
+          </div>
+          {todayAppointments.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl p-8 text-center">
+              <Clock size={32} className="mx-auto text-muted-foreground/30 mb-2" />
+              <p className="text-sm text-muted-foreground">Nenhum agendamento para hoje</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {todayAppointments.map((appt) => (
+                <div
+                  key={appt.id}
+                  className="bg-card border border-border rounded-xl p-4 flex items-start gap-3"
+                >
+                  <div className="p-2 rounded-lg bg-primary/10 mt-0.5">
+                    <Clock size={16} className="text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{appt.clientName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {appt.serviceItem} • {format(new Date(appt.dateTime), 'HH:mm')}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="text-[9px] uppercase tracking-wider shrink-0">
+                    Hoje
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ════ Vendas de Produtos ════ */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <ShoppingBag size={16} className="text-rose-400" />
-            <h3 className="text-sm font-bold text-white">Vendas de Produtos</h3>
-            <span className="text-[10px] text-gray-600 ml-1">este mês</span>
+            <ShoppingBag size={16} className="text-primary" />
+            <h3 className="text-sm font-bold text-foreground">Vendas de Produtos</h3>
+            <span className="text-[10px] text-muted-foreground ml-1">este mês</span>
             {!hideValues && productTotalRevenue > 0 && (
-              <span className="text-xs font-bold text-emerald-400 ml-auto">
+              <span className="text-xs font-bold text-emerald-500 ml-auto">
                 {formatCurrency(productTotalRevenue)}
               </span>
             )}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {topProducts.length > 0 ? topProducts.map((prod, i) => (
-              <GlassCard key={prod.name} className="p-4" glowColor="rgba(244,63,94,0.2)">
+              <div key={prod.name} className="bg-card border border-border rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 rounded-lg bg-rose-500/15">
-                    <Package size={14} className="text-rose-400" />
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Package size={14} className="text-primary" />
                   </div>
-                  <span className="text-[10px] text-gray-500 font-bold">#{i + 1}</span>
+                  <span className="text-[10px] text-muted-foreground font-bold">#{i + 1}</span>
                 </div>
-                <p className="text-xs font-semibold text-white truncate" title={prod.name}>{prod.name}</p>
+                <p className="text-xs font-semibold text-foreground truncate" title={prod.name}>{prod.name}</p>
                 <div className="flex justify-between items-end mt-2">
-                  <span className="text-[10px] text-gray-500">{prod.qty} vendidos</span>
-                  <span className="text-sm font-bold text-white">{fmtVal(prod.total)}</span>
+                  <span className="text-[10px] text-muted-foreground">{prod.qty} vendidos</span>
+                  <span className="text-sm font-bold text-foreground">{fmtVal(prod.total)}</span>
                 </div>
-              </GlassCard>
+              </div>
             )) : (
-              <p className="col-span-full text-center text-gray-600 py-6 text-xs">Nenhuma venda de produto este mês</p>
+              <p className="col-span-full text-center text-muted-foreground py-6 text-xs">Nenhuma venda de produto este mês</p>
             )}
           </div>
         </div>

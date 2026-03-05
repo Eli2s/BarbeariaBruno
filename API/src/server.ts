@@ -28,7 +28,24 @@ const PORT = process.env.PORT || 3001;
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhookRouter);
 
 // Middlewares
-app.use(cors());
+const allowedOrigins = [
+    'http://localhost:8080',
+    'http://localhost:5173',
+    'https://barbearia-bruno-tau.vercel.app',
+    process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Permite requisições sem origin (Postman, curl, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS bloqueado para origem: ${origin}`));
+        }
+    },
+    credentials: true,
+}));
 app.use(express.json());
 
 // Health check

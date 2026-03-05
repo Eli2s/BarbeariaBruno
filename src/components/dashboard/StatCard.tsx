@@ -21,16 +21,16 @@ export function StatCard({ title, value, icon: Icon, subtitle, className, glowCo
     >
       <div className="flex justify-between items-start">
         <div className={cn("p-2.5 rounded-xl flex items-center justify-center", iconBg)}>
-          <Icon size={18} className="text-white" />
+          <Icon size={18} className="text-primary-foreground" />
         </div>
         {subtitle && (
-          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-1">{subtitle}</span>
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mt-1">{subtitle}</span>
         )}
       </div>
 
       <div className="mt-auto pt-3">
-        <h3 className="text-2xl font-extrabold tracking-tight text-white">{value}</h3>
-        <p className="text-xs text-gray-500 font-medium mt-0.5">{title}</p>
+        <h3 className="text-2xl font-extrabold tracking-tight text-foreground">{value}</h3>
+        <p className="text-xs text-muted-foreground font-medium mt-0.5">{title}</p>
       </div>
     </GlassCard>
   );
