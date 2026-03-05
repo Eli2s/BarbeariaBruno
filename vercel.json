@@ -1,15 +1,29 @@
 {
     "version": 2,
-    "buildCommand": "npm run build && cd API && npx prisma generate",
-    "outputDirectory": "dist",
-    "rewrites": [
+    "builds": [
         {
-            "source": "/api/(.*)",
-            "destination": "/api"
+            "src": "API/src/server.ts",
+            "use": "@vercel/node"
         },
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
+            "src": "package.json",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "dist"
+            }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/(.*)",
+            "dest": "API/src/server.ts"
+        },
+        {
+            "handle": "filesystem"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
         }
     ]
 }
