@@ -32,6 +32,9 @@ const allowedOrigins = [
     'http://localhost:8080',
     'http://localhost:5173',
     'https://barbearia-bruno-tau.vercel.app',
+    'https://www.bruno-barbearia.online',
+    'https://bruno-barbearia.online',
+    'https://bruno-online-web.vercel.app',
     process.env.FRONTEND_URL,
 ].filter(Boolean);
 
