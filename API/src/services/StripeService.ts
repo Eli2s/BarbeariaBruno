@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_fallback');
 
 class StripeService {
-    async createProductAndPrice(name: string, description: string, amount: number, periodicity: string) {
+    async createProductAndPrice(name: string, description: string, amount: number, periodicity: string, customDays?: number) {
         let interval: Stripe.PriceCreateParams.Recurring.Interval = 'month';
         let interval_count = 1;
 
@@ -14,9 +14,8 @@ class StripeService {
             interval = 'year';
             interval_count = 1;
         } else if (periodicity === 'personalizado') {
-            // defaults to monthly if unmapped since stripe has limited intervals
             interval = 'day';
-            interval_count = 30; // We'll assume a standard 30 day config from caller instead
+            interval_count = customDays && customDays > 0 ? customDays : 30;
         }
 
         const product = await stripe.products.create({

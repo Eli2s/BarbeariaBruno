@@ -11,6 +11,7 @@ import ClientProfilePage from "./pages/ClientProfilePage";
 import ServiceFormPage from "./pages/ServiceFormPage";
 import PlanFormPage from "./pages/PlanFormPage";
 import PlanCheckoutPage from "./pages/PlanCheckoutPage";
+import PlanSuccessPage from "./pages/PlanSuccessPage";
 import PlansListPage from "./pages/PlansListPage";
 import ProductsPage from "./pages/ProductsPage";
 import ServiceItemsPage from "./pages/ServiceItemsPage";
@@ -40,6 +41,7 @@ const App = () => (
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/planos/sucesso" element={<PlanSuccessPage />} />
           <Route path="/loja" element={<StorePage />} />
           <Route path="/loja/checkout/:productId" element={<StoreCheckoutPage />} />
           <Route path="/whatsapp-oauth-callback" element={<WhatsAppOAuthCallbackPage />} />

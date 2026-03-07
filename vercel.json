@@ -1,5 +1,11 @@
 {
     "version": 2,
+    "crons": [
+        {
+            "path": "/api/cron/check-overdue",
+            "schedule": "0 6 * * *"
+        }
+    ],
     "builds": [
         {
             "src": "API/src/server.ts",
