@@ -4,15 +4,28 @@ import { usePlan, useUpdatePlan } from '@/hooks/usePlans';
 import { useClient } from '@/hooks/useClients';
 import { useCreatePlanPayment } from '@/hooks/usePlanPayments';
 import { AppLayout } from '@/components/AppLayout';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, CreditCard, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Banknote, CreditCard, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { formatCurrency } from '@/lib/format';
 import { sendPaymentConfirmation } from '@/lib/whatsappApi';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+const PAYMENT_METHODS = [
+  { value: 'pix', label: 'Pix', icon: QrCode },
+  { value: 'dinheiro', label: 'Dinheiro', icon: Banknote },
+  { value: 'debito', label: 'Débito', icon: CreditCard },
+  { value: 'credito', label: 'Crédito', icon: CreditCard },
+];
 
 export default function PlanCheckoutPage() {
   const { planId } = useParams();
@@ -22,65 +35,44 @@ export default function PlanCheckoutPage() {
   const createPlanPayment = useCreatePlanPayment();
   const updatePlan = useUpdatePlan();
 
-  const [step, setStep] = useState<'card' | 'done'>('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [cardName, setCardName] = useState('');
+  const [step, setStep] = useState<'form' | 'done'>('form');
+  const [paymentMethod, setPaymentMethod] = useState('pix');
   const [processing, setProcessing] = useState(false);
 
   if (!plan || !client) return null;
 
-  const formatCardNumber = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 16);
-    return digits.replace(/(\d{4})/g, '$1 ').trim();
-  };
+  const days = plan.periodicity === 'quinzenal' ? 15 : plan.periodicity === 'mensal' ? 30 : (plan.customDays || 30);
 
-  const formatExpiry = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 4);
-    if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return digits;
-  };
-
-  const handlePay = async () => {
-    if (!cardNumber || cardNumber.replace(/\s/g, '').length < 16) { toast.error('Número do cartão inválido'); return; }
-    if (!cardExpiry || cardExpiry.length < 5) { toast.error('Validade inválida'); return; }
-    if (!cardCvv || cardCvv.length < 3) { toast.error('CVV inválido'); return; }
-    if (!cardName.trim()) { toast.error('Nome no cartão obrigatório'); return; }
-
+  const handleConfirm = async () => {
     setProcessing(true);
-    await new Promise(r => setTimeout(r, 2000));
-
-    const days = plan.periodicity === 'quinzenal' ? 15 : plan.periodicity === 'mensal' ? 30 : (plan.customDays || 30);
+    const today = format(new Date(), 'yyyy-MM-dd');
     const nextCharge = format(addDays(new Date(), days), 'yyyy-MM-dd');
 
     try {
       await createPlanPayment.mutateAsync({
         planId: plan.id!,
-        expectedDate: format(new Date(), 'yyyy-MM-dd'),
-        paidDate: format(new Date(), 'yyyy-MM-dd'),
+        expectedDate: today,
+        paidDate: today,
         status: 'pago',
         value: plan.value,
       });
-      await updatePlan.mutateAsync({ id: plan.id!, nextCharge });
+      await updatePlan.mutateAsync({ id: plan.id!, nextCharge, status: 'ativo' });
 
-      setProcessing(false);
       setStep('done');
 
       if (client?.whatsapp) {
         sendPaymentConfirmation(client, { ...plan, nextCharge })
           .then(result => {
             if (result.success) {
-              toast.success('Confirmação de pagamento enviada via WhatsApp! 📱');
-            } else if (result.errorMessage) {
-              toast.warning('WhatsApp não enviado', { description: result.errorMessage });
+              toast.success('Confirmação enviada via WhatsApp!');
             }
           })
           .catch(() => {});
       }
     } catch {
+      toast.error('Erro ao registrar pagamento');
+    } finally {
       setProcessing(false);
-      toast.error('Erro ao processar pagamento');
     }
   };
 
@@ -91,13 +83,16 @@ export default function PlanCheckoutPage() {
           <div className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center gradient-glow">
             <CheckCircle className="text-white" size={40} />
           </div>
-          <h2 className="text-xl font-bold">Pagamento confirmado!</h2>
+          <h2 className="text-xl font-bold">Pagamento registrado!</h2>
           <p className="text-sm text-muted-foreground">
-            O plano <strong>{plan.name}</strong> de {client.nickname || client.name} foi ativado com sucesso.
+            O pagamento do plano <strong>{plan.name}</strong> de{' '}
+            <strong>{client.nickname || client.name}</strong> foi confirmado.
           </p>
-          <div className="gradient-subtle rounded-lg p-4 w-full">
-            <p className="text-sm font-medium">{plan.name}</p>
-            <p className="text-lg font-bold gradient-text">{formatCurrency(plan.value)}/{plan.periodicity === 'quinzenal' ? 'quinzena' : 'mês'}</p>
+          <div className="gradient-subtle rounded-lg p-4 w-full text-left">
+            <p className="text-xs text-muted-foreground">Próxima cobrança</p>
+            <p className="text-sm font-semibold">
+              em {days} dias — {formatCurrency(plan.value)}
+            </p>
           </div>
           <Button onClick={() => navigate(`/clientes/${plan.clientId}`)} className="gap-1">
             Ver Perfil do Cliente
@@ -114,59 +109,65 @@ export default function PlanCheckoutPage() {
           <ArrowLeft size={14} /> Voltar
         </Button>
 
-        <h2 className="text-xl font-bold">Checkout do Plano</h2>
+        <h2 className="text-xl font-bold">Registrar Pagamento</h2>
+        <p className="text-xs text-muted-foreground">
+          Use esta tela para registrar pagamentos recebidos presencialmente. Para assinaturas online, use o link de checkout do Stripe.
+        </p>
 
+        {/* Plan Summary */}
         <Card className="gradient-subtle">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
+          <CardContent className="p-4 space-y-1">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold">{plan.name}</p>
-                <p className="text-xs text-muted-foreground">Cliente: {client.nickname || client.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {client.nickname || client.name}
+                </p>
               </div>
               <p className="text-xl font-bold gradient-text">{formatCurrency(plan.value)}</p>
             </div>
             <p className="text-xs text-muted-foreground">{plan.description}</p>
-            <p className="text-xs text-primary mt-1">
-              {plan.periodicity === 'quinzenal' ? 'Quinzenal' : plan.periodicity === 'mensal' ? 'Mensal' : `A cada ${plan.customDays} dias`}
+            <p className="text-xs text-primary">
+              {plan.periodicity === 'quinzenal'
+                ? 'Quinzenal (15 dias)'
+                : plan.periodicity === 'mensal'
+                ? 'Mensal (30 dias)'
+                : `A cada ${plan.customDays} dias`}
             </p>
           </CardContent>
         </Card>
 
+        {/* Payment Method */}
         <Card>
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <CreditCard size={18} className="text-primary" />
-              <h3 className="font-semibold text-sm">Dados do Cartão</h3>
-            </div>
-            <div className="space-y-1">
-              <Label>Número do Cartão</Label>
-              <Input value={cardNumber} onChange={e => setCardNumber(formatCardNumber(e.target.value))} placeholder="0000 0000 0000 0000" maxLength={19} inputMode="numeric" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Validade</Label>
-                <Input value={cardExpiry} onChange={e => setCardExpiry(formatExpiry(e.target.value))} placeholder="MM/AA" maxLength={5} inputMode="numeric" />
-              </div>
-              <div className="space-y-1">
-                <Label>CVV</Label>
-                <Input value={cardCvv} onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="123" maxLength={4} inputMode="numeric" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Nome no cartão</Label>
-              <Input value={cardName} onChange={e => setCardName(e.target.value.toUpperCase())} placeholder="NOME COMO NO CARTÃO" />
-            </div>
+            <Label>Forma de pagamento recebida</Label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_METHODS.map(m => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
-        <Button className="w-full h-12 font-semibold" onClick={handlePay} disabled={processing}>
+        <Button
+          className="w-full h-12 font-semibold"
+          onClick={handleConfirm}
+          disabled={processing}
+        >
           {processing ? (
             <span className="flex items-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-              Processando...
+              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+              Registrando...
             </span>
           ) : (
-            `Confirmar Pagamento — ${formatCurrency(plan.value)}`
+            `Confirmar Recebimento — ${formatCurrency(plan.value)}`
           )}
         </Button>
       </div>

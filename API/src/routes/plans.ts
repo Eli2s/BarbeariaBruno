@@ -4,14 +4,22 @@ import StripeService from '../services/StripeService';
 
 const router = Router();
 
-// Listar planos (filtro opcional por clientId)
+// Listar planos
+// ?clientId=X → planos de um cliente específico
+// ?general=true → planos gerais (sem cliente)
+// (sem query) → todos os planos
 router.get('/', async (req: Request, res: Response) => {
     try {
-        const where = req.query.clientId
-            ? { clientId: Number(req.query.clientId) }
-            : {};
+        let where: Record<string, unknown> = {};
+
+        if (req.query.clientId) {
+            where.clientId = Number(req.query.clientId);
+        } else if (req.query.general === 'true') {
+            where.clientId = null;
+        }
+
         const plans = await prisma.plan.findMany({
-            where,
+            where: where as any,
             orderBy: { createdAt: 'desc' },
             include: { client: true, payments: true },
         });
@@ -38,29 +46,43 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Criar plano
 router.post('/', async (req: Request, res: Response) => {
     try {
-        const { name, description, value, periodicity, clientId, startDate, nextCharge, ...rest } = req.body;
+        const {
+            name,
+            description,
+            value,
+            periodicity,
+            customDays,
+            clientId,
+            startDate,
+            nextCharge,
+            status,
+            benefits,
+            internalNote,
+            isGeneral,
+        } = req.body;
 
         let stripeProductId: string | null = null;
         let stripePriceId: string | null = null;
 
-        // Se não tem cliente fixo, é um "Template de Plano" geral da Barbearia
-        // Tenta criar na Stripe, mas não bloqueia se Stripe não estiver configurado
-        if (!clientId) {
+        // Plano geral (template) — cria produto na Stripe
+        const planIsGeneral = isGeneral === true || isGeneral === 'true' || !clientId;
+
+        if (planIsGeneral) {
             try {
                 const stripeData = await StripeService.createProductAndPrice(
                     name,
                     description || 'Assinatura Barbearia',
                     value,
-                    periodicity
+                    periodicity,
+                    customDays
                 );
                 stripeProductId = stripeData.productId;
                 stripePriceId = stripeData.priceId;
             } catch (stripeErr: any) {
-                console.warn('[Plans] Stripe nao configurado ou falhou, plano criado sem Stripe IDs:', stripeErr.message);
+                console.warn('[Plans] Stripe não configurado ou falhou:', stripeErr.message);
             }
         }
 
-        // startDate e nextCharge são obrigatórios no schema — usa data de hoje como padrão
         const today = new Date().toISOString().split('T')[0];
 
         const plan = await prisma.plan.create({
@@ -69,27 +91,35 @@ router.post('/', async (req: Request, res: Response) => {
                 description: description || '',
                 value,
                 periodicity,
-                clientId,
+                customDays: customDays ?? null,
+                clientId: clientId ?? null,
+                isGeneral: planIsGeneral,
                 startDate: startDate || today,
                 nextCharge: nextCharge || today,
+                status: status || 'ativo',
+                benefits: benefits ?? null,
+                internalNote: internalNote ?? null,
                 stripeProductId,
                 stripePriceId,
-                ...rest
-            }
+            } as any,
         });
+
         res.status(201).json(plan);
     } catch (error: any) {
         console.error('[Plans] Create Error', error);
-        res.status(500).json({ error: 'Erro ao criar plano', stack: String(error) });
+        res.status(500).json({ error: 'Erro ao criar plano', details: String(error) });
     }
 });
 
 // Atualizar plano
 router.put('/:id', async (req: Request, res: Response) => {
     try {
+        // Remove campos não-persistíveis que podem vir do frontend
+        const { id: _id, createdAt: _c, client: _cl, payments: _p, ...data } = req.body;
+
         const plan = await prisma.plan.update({
             where: { id: Number(req.params.id) },
-            data: req.body,
+            data: data as any,
         });
         res.json(plan);
     } catch (error) {
@@ -107,19 +137,19 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 });
 
-// Obter link de checkout (WhatsApp)
+// Gerar link de checkout Stripe
 router.post('/:id/checkout-session', async (req: Request, res: Response) => {
     try {
         const planId = Number(req.params.id);
         const { clientId } = req.body;
 
         if (!clientId) {
-            return res.status(400).json({ error: 'Client ID é obrigatório para gerar o checkout' });
+            return res.status(400).json({ error: 'clientId é obrigatório' });
         }
 
         const plan = await prisma.plan.findUnique({ where: { id: planId } });
         if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
-        if (!plan.stripePriceId) return res.status(400).json({ error: 'Plano não possuí integração com Stripe' });
+        if (!plan.stripePriceId) return res.status(400).json({ error: 'Plano não possui integração com Stripe' });
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
         const sessionUrl = await StripeService.createCheckoutSession(
@@ -131,7 +161,7 @@ router.post('/:id/checkout-session', async (req: Request, res: Response) => {
         res.json({ checkoutUrl: sessionUrl });
     } catch (error: any) {
         console.error('[Plans] Checkout Session erro', error);
-        res.status(500).json({ error: 'Erro ao gerar checkout da stripe' });
+        res.status(500).json({ error: 'Erro ao gerar checkout' });
     }
 });
 

@@ -18,6 +18,7 @@ import adminWhatsAppRouter from './routes/adminWhatsApp';
 import webhookRouter from './routes/webhook';
 import appointmentsRouter from './routes/appointmentRoutes';
 import stripeWebhookRouter from './routes/stripeWebhook';
+import cronJobsRouter from './routes/cronJobs';
 
 dotenv.config();
 
@@ -72,6 +73,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/admin/whatsapp', adminWhatsAppRouter);
 app.use('/api/webhook/whatsmiau', webhookRouter);
 app.use('/api/appointments', appointmentsRouter);
+app.use('/api/cron', cronJobsRouter);
 
 // Iniciar servidor apenas em ambiente local (não na Vercel)
 if (process.env.VERCEL !== '1') {

@@ -60,6 +60,7 @@ model Plan {
   status               String        @default("ativo")
   benefits             String?
   internalNote         String?       @map("internal_note")
+  isGeneral            Boolean       @default(false) @map("is_general")
   stripeProductId      String?       @map("stripe_product_id")
   stripePriceId        String?       @map("stripe_price_id")
   stripeSubscriptionId String?       @map("stripe_subscription_id")
